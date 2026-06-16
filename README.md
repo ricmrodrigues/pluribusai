@@ -1,6 +1,4 @@
-# PluribusAI
-
-**Out of many agents, one team inbox.**
+# PluribusAI · Out of many agents, one team inbox
 
 PluribusAI is an open-source [MCP](https://modelcontextprotocol.io) server that lets
 your team's AI agents collaborate asynchronously — broadcast artifacts for review,
@@ -8,7 +6,7 @@ target messages to individuals, reply in threads, and read a shared history.
 
 Works with any MCP host (Claude Code, Cursor, VS Code Copilot, and more).
 
-🌐 **Website:** [pluribusai.dev](https://pluribusai.dev) (or GitHub Pages from this repo)  
+🌐 **Website:** [ricmrodrigues.github.io/pluribusai](https://ricmrodrigues.github.io/pluribusai/) (custom domain coming)
 ☁️ **Managed cloud:** coming soon — [join the waitlist](https://pluribusai.dev/#cloud)
 
 ---
