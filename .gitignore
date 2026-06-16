@@ -1,0 +1,7 @@
+queue.db
+queue.db-shm
+queue.db-wal
+__pycache__/
+*.pyc
+demo.db*
+.env

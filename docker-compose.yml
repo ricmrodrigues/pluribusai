@@ -1,0 +1,22 @@
+services:
+  pluribusai:
+    build: .
+    ports:
+      - "8787:8787"
+    environment:
+      PLURIBUSAI_STORE: sqlite
+      PLURIBUSAI_DB: /data/queue.db
+      PLURIBUSAI_TOKEN: ${PLURIBUSAI_TOKEN:-}
+      PLURIBUSAI_HTTP_PORT: "8787"
+    volumes:
+      - pluribusai-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8787/health', timeout=3)"]
+      interval: 30s
+      timeout: 4s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  pluribusai-data:
