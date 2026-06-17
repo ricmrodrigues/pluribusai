@@ -34,18 +34,11 @@ PLURIBUSAI_USER=<yourname> \
 
 ## Cursor
 
-Add to MCP config manually:
+Installed automatically to `~/.cursor/mcp.json` by both install scripts.
+Restart Cursor after install.
 
-```json
-{
-  "mcpServers": {
-    "pluribusai": {
-      "url": "http://localhost:8787/mcp",
-      "headers": { "Authorization": "Bearer <token>" }
-    }
-  }
-}
-```
+On Windows, Claude Code is optional — `install-windows.sh` configures Cursor and
+desktop notifications even if `claude` is not in PATH.
 
 ## Use it
 

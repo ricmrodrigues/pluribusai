@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 from store import make_store
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 TOKEN = os.environ.get("PLURIBUSAI_TOKEN")
 PORT = int(os.environ.get("PLURIBUSAI_HTTP_PORT", "8787"))
@@ -71,6 +71,21 @@ def t_get_activity(a):
         raise ValueError("'user' is required")
     return STORE.get_activity(
         a["user"], since=a.get("since", 0), limit=a.get("limit", 50))
+
+
+def t_list_teammates(a):
+    return STORE.list_teammates()
+
+
+def t_search_messages(a):
+    if not a.get("query"):
+        raise ValueError("'query' is required")
+    return STORE.search_messages(
+        a["query"],
+        limit=a.get("limit", 30),
+        sender=a.get("sender"),
+        kind=a.get("kind"),
+    )
 
 
 TOOLS = {
@@ -168,6 +183,34 @@ TOOLS = {
                 "limit": {"type": "integer"},
             },
             "required": ["user"],
+        },
+    },
+    "list_teammates": {
+        "fn": t_list_teammates,
+        "description": "List usernames seen in the team inbox (senders, recipients, "
+                       "readers, repliers) with last activity timestamp.",
+        "schema": {"type": "object", "properties": {}},
+    },
+    "search_messages": {
+        "fn": t_search_messages,
+        "description": "Search message bodies, refs, IDs, and reply text. Returns "
+                       "matching snippets newest first.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Text to search for."},
+                "limit": {"type": "integer"},
+                "sender": {
+                    "type": "string",
+                    "description": "Optional filter: message sender or reply author.",
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": ["text", "mr", "idea", "design", "snippet", "doc"],
+                    "description": "Optional filter by message kind.",
+                },
+            },
+            "required": ["query"],
         },
     },
 }

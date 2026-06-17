@@ -22,3 +22,5 @@ jobs:
         run: python3 tests/test_activity.py
       - name: HTTP tests
         run: python3 tests/test_http.py
+      - name: v0.3 tests
+        run: python3 tests/test_v03.py

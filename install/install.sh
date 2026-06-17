@@ -36,6 +36,7 @@ d.pop("statusLine",None)
 json.dump(d,open(p,"w"),indent=2)
 PY
   python3 "$(dirname "$0")/hooks_util.py" uninstall "$SETTINGS" 2>/dev/null || true
+  python3 "$(dirname "$0")/cursor_util.py" uninstall 2>/dev/null || true
   say "Removed."
   exit 0
 fi
@@ -69,6 +70,10 @@ else
   claude mcp add --scope user --transport http pluribusai "$ENDPOINT/mcp" >/dev/null
 fi
 say "  registered -> $ENDPOINT/mcp"
+
+say "Registering PluribusAI with Cursor..."
+CURSOR_CFG=$(python3 "$(dirname "$0")/cursor_util.py" install "$ENDPOINT" "$TOKEN")
+say "  cursor -> $CURSOR_CFG"
 
 say "Writing poller + statusline to $DIR ..."
 cat > "$DIR/env" <<EOF
@@ -191,5 +196,5 @@ if [ -n "$c" ]; then
 else
   printf '\033[33m==>\033[0m Installed; endpoint not reachable yet (status line shows stale).\n'
 fi
-echo "   • Restart Claude to pick up the MCP server"
+echo "   • Restart Claude and/or Cursor to pick up the MCP server"
 echo "   • Uninstall: ./install.sh --uninstall"

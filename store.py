@@ -73,6 +73,32 @@ def _activity_result(events, since, limit):
     return {"events": events, "count": len(events), "cursor": cursor}
 
 
+def _audience_names(audience_str):
+    aud = _audience_from_str(audience_str)
+    return aud if isinstance(aud, list) else []
+
+
+def _bump_activity(activity, name, ts):
+    if not name or name == "unknown":
+        return
+    activity[name] = max(activity.get(name, 0), float(ts))
+
+
+def _snippet(text, query, n=160):
+    if not text:
+        return ""
+    low = str(text).lower()
+    q = str(query).lower().strip()
+    i = low.find(q) if q else -1
+    if i < 0:
+        return _preview(text, n)
+    start = max(0, i - 40)
+    excerpt = str(text)[start: start + n].replace("\n", " ")
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if start + n < len(text) else ""
+    return prefix + excerpt.strip() + suffix
+
+
 # --------------------------------------------------------------------------- #
 # SQLite
 # --------------------------------------------------------------------------- #
@@ -221,6 +247,86 @@ class SqliteStore:
                     "created_at": row["created_at"],
                 })
         return _activity_result(events, since, limit)
+
+    def list_teammates(self):
+        activity = {}
+        with self._conn() as c:
+            for r in c.execute("SELECT sender, audience, created_at FROM messages"):
+                row = dict(r)
+                _bump_activity(activity, row["sender"], row["created_at"])
+                for name in _audience_names(row["audience"]):
+                    _bump_activity(activity, name, row["created_at"])
+            for r in c.execute('SELECT "user", read_at FROM message_reads'):
+                row = dict(r)
+                _bump_activity(activity, row["user"], row["read_at"])
+            for r in c.execute("SELECT author, created_at FROM message_replies"):
+                row = dict(r)
+                _bump_activity(activity, row["author"], row["created_at"])
+        teammates = [
+            {"name": name, "last_active": ts}
+            for name, ts in sorted(activity.items(), key=lambda x: x[0])
+        ]
+        return {"teammates": teammates, "count": len(teammates)}
+
+    def search_messages(self, query, limit=30, sender=None, kind=None):
+        q = str(query or "").strip()
+        if not q:
+            raise ValueError("'query' is required")
+        limit = max(1, min(int(limit or 30), 100))
+        pattern = f"%{q.lower()}%"
+        hits = []
+        with self._conn() as c:
+            msg_sql = (
+                "SELECT * FROM messages WHERE ("
+                "LOWER(COALESCE(content,'')) LIKE ? OR "
+                "LOWER(COALESCE(ref,'')) LIKE ? OR LOWER(id) LIKE ?"
+            )
+            msg_params = [pattern, pattern, pattern]
+            if sender:
+                msg_sql += " AND LOWER(sender) = ?"
+                msg_params.append(sender.lower())
+            if kind:
+                msg_sql += " AND kind = ?"
+                msg_params.append(kind)
+            msg_sql += ") ORDER BY created_at DESC"
+            for row in c.execute(msg_sql, msg_params):
+                row = dict(row)
+                text = row.get("content") or row.get("ref") or ""
+                hits.append({
+                    "type": "message",
+                    "message_id": row["id"],
+                    "sender": row["sender"],
+                    "kind": row["kind"],
+                    "snippet": _snippet(text, q),
+                    "created_at": row["created_at"],
+                })
+            rpl_sql = (
+                "SELECT r.*, m.kind AS msg_kind FROM message_replies r "
+                "JOIN messages m ON m.id = r.message_id WHERE "
+                "LOWER(r.content) LIKE ? OR LOWER(r.id) LIKE ?"
+            )
+            rpl_params = [pattern, pattern]
+            if sender:
+                rpl_sql += " AND LOWER(r.author) = ?"
+                rpl_params.append(sender.lower())
+            if kind:
+                rpl_sql += " AND m.kind = ?"
+                rpl_params.append(kind)
+            rpl_sql += " ORDER BY r.created_at DESC"
+            for row in c.execute(rpl_sql, rpl_params):
+                row = dict(row)
+                hits.append({
+                    "type": "reply",
+                    "message_id": row["message_id"],
+                    "reply_id": row["id"],
+                    "author": row["author"],
+                    "kind": row.get("msg_kind"),
+                    "snippet": _snippet(row["content"], q),
+                    "created_at": row["created_at"],
+                })
+        hits.sort(key=lambda h: h["created_at"], reverse=True)
+        hits = hits[:limit]
+        return {"hits": hits, "count": len(hits), "query": q}
 
 
 # --------------------------------------------------------------------------- #
@@ -434,6 +540,94 @@ class PostgresStore:
         finally:
             c.close()
         return _activity_result(events, since, limit)
+
+    def list_teammates(self):
+        activity = {}
+        c = self._connect()
+        try:
+            cur = c.cursor()
+            cur.execute("SELECT sender, audience, created_at FROM messages")
+            for row in self._dicts(cur):
+                _bump_activity(activity, row["sender"], row["created_at"])
+                for name in _audience_names(row["audience"]):
+                    _bump_activity(activity, name, row["created_at"])
+            cur.execute('SELECT "user", read_at FROM message_reads')
+            for row in self._dicts(cur):
+                _bump_activity(activity, row["user"], row["read_at"])
+            cur.execute("SELECT author, created_at FROM message_replies")
+            for row in self._dicts(cur):
+                _bump_activity(activity, row["author"], row["created_at"])
+        finally:
+            c.close()
+        teammates = [
+            {"name": name, "last_active": ts}
+            for name, ts in sorted(activity.items(), key=lambda x: x[0])
+        ]
+        return {"teammates": teammates, "count": len(teammates)}
+
+    def search_messages(self, query, limit=30, sender=None, kind=None):
+        q = str(query or "").strip()
+        if not q:
+            raise ValueError("'query' is required")
+        limit = max(1, min(int(limit or 30), 100))
+        pattern = f"%{q.lower()}%"
+        hits = []
+        c = self._connect()
+        try:
+            cur = c.cursor()
+            msg_sql = (
+                "SELECT * FROM messages WHERE ("
+                "LOWER(COALESCE(content,'')) LIKE %s OR "
+                "LOWER(COALESCE(ref,'')) LIKE %s OR LOWER(id) LIKE %s"
+            )
+            msg_params = [pattern, pattern, pattern]
+            if sender:
+                msg_sql += " AND LOWER(sender) = %s"
+                msg_params.append(sender.lower())
+            if kind:
+                msg_sql += " AND kind = %s"
+                msg_params.append(kind)
+            msg_sql += ") ORDER BY created_at DESC"
+            cur.execute(msg_sql, msg_params)
+            for row in self._dicts(cur):
+                text = row.get("content") or row.get("ref") or ""
+                hits.append({
+                    "type": "message",
+                    "message_id": row["id"],
+                    "sender": row["sender"],
+                    "kind": row["kind"],
+                    "snippet": _snippet(text, q),
+                    "created_at": row["created_at"],
+                })
+            rpl_sql = (
+                "SELECT r.*, m.kind AS msg_kind FROM message_replies r "
+                "JOIN messages m ON m.id = r.message_id WHERE "
+                "LOWER(r.content) LIKE %s OR LOWER(r.id) LIKE %s"
+            )
+            rpl_params = [pattern, pattern]
+            if sender:
+                rpl_sql += " AND LOWER(r.author) = %s"
+                rpl_params.append(sender.lower())
+            if kind:
+                rpl_sql += " AND m.kind = %s"
+                rpl_params.append(kind)
+            rpl_sql += " ORDER BY r.created_at DESC"
+            cur.execute(rpl_sql, rpl_params)
+            for row in self._dicts(cur):
+                hits.append({
+                    "type": "reply",
+                    "message_id": row["message_id"],
+                    "reply_id": row["id"],
+                    "author": row["author"],
+                    "kind": row.get("msg_kind"),
+                    "snippet": _snippet(row["content"], q),
+                    "created_at": row["created_at"],
+                })
+        finally:
+            c.close()
+        hits.sort(key=lambda h: h["created_at"], reverse=True)
+        hits = hits[:limit]
+        return {"hits": hits, "count": len(hits), "query": q}
 
 
 def _default_db_path():

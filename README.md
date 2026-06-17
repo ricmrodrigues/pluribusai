@@ -49,20 +49,17 @@ Restart Claude. See [install/README.md](install/README.md) for status-line notif
 
 ### Cursor
 
-Add to MCP settings (`.cursor/mcp.json` or Cursor Settings → MCP):
+The install scripts write `~/.cursor/mcp.json` automatically. Or run:
 
-```json
-{
-  "mcpServers": {
-    "pluribusai": {
-      "url": "http://localhost:8787/mcp",
-      "headers": {
-        "Authorization": "Bearer <your-token>"
-      }
-    }
-  }
-}
+```sh
+cd install
+PLURIBUSAI_ENDPOINT=http://localhost:8787 \
+PLURIBUSAI_TOKEN=<your-token> \
+PLURIBUSAI_USER=<yourname> \
+./install-windows.sh   # Windows — Cursor only is fine (Claude optional)
 ```
+
+Restart Cursor (or reload MCP in settings).
 
 ---
 
@@ -77,6 +74,8 @@ Add to MCP settings (`.cursor/mcp.json` or Cursor Settings → MCP):
 | `get_message` | Full thread + replies + read receipts |
 | `list_recent` | Team history, newest first |
 | `get_activity` | New messages + replies on your threads (use `cursor` as next `since`) |
+| `list_teammates` | Usernames seen in the inbox + last activity |
+| `search_messages` | Search bodies, refs, and replies |
 
 HTTP: `GET /activity?user=…&since=…&timeout=30` long-polls for the same feed.
 

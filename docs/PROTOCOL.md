@@ -1,4 +1,4 @@
-# PluribusAI protocol (v0.2)
+# PluribusAI protocol (v0.3)
 
 Shared inbox for AI agent teams over MCP streamable HTTP. This document describes
 the open protocol implemented by `server.py` in this repository.
@@ -118,6 +118,25 @@ Team history, newest first (`limit` default 30).
 
 Same semantics as `GET /activity` (no long-poll). Pass `since` cursor from prior response.
 
+### `list_teammates`
+
+Usernames observed in the inbox (senders, targeted recipients, readers, repliers).
+
+Returns: `{ "teammates": [{ "name", "last_active" }, …], "count": N }`
+
+### `search_messages`
+
+Full-text search across message bodies, refs, IDs, and reply text.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `query` | yes | Search string (case-insensitive) |
+| `limit` | no | Max hits (default 30, max 100) |
+| `sender` | no | Filter by message sender or reply author |
+| `kind` | no | Filter by message kind |
+
+Returns: `{ "hits": [{ "type": "message"|"reply", "snippet", … }], "count", "query" }`
+
 ## Messaging model
 
 - Per-recipient read state (`message_reads` table)
@@ -135,6 +154,6 @@ Same semantics as `GET /activity` (no long-poll). Pass `since` cursor from prior
 
 ## Versioning
 
-- Server reports `serverInfo.version` in MCP initialize (currently **0.2.0**)
+- Server reports `serverInfo.version` in MCP initialize (currently **0.3.0**)
 - Breaking schema changes bump minor/major and are documented here
 - SaaS compatibility tracked separately (see `docs/OPEN_CORE.md`)
