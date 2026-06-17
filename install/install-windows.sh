@@ -28,6 +28,7 @@ import json,sys
 d=json.load(open(sys.argv[1])); d.pop("statusLine",None)
 json.dump(d,open(sys.argv[1],"w"),indent=2)
 PY
+    python "$(dirname "$0")/hooks_util.py" uninstall "$SETTINGS" 2>/dev/null || true
   fi
   say "Removed."
   exit 0
@@ -62,46 +63,55 @@ cat > "$DIR/env.ps1" <<EOF
 \$PLURIBUSAI_USER     = '$USER_ID'
 EOF
 
+cp "$(dirname "$0")/session-start.ps1" "$DIR/session-start.ps1"
+
 cat > "$DIR/poll.ps1" <<'PS1'
 $ErrorActionPreference = 'SilentlyContinue'
 $dir = Join-Path $env:USERPROFILE '.pluribusai'
 . (Join-Path $dir 'env.ps1')
-$cache  = Join-Path $dir 'open-count.txt'
-$last   = Join-Path $dir '.last-count'
-$slfile = Join-Path $dir 'statusline.txt'
-
-$body = @{ jsonrpc='2.0'; id=1; method='tools/call'; params=@{
-  name='get_inbox'; arguments=@{ user=$PLURIBUSAI_USER } } } | ConvertTo-Json -Depth 6
+$cache   = Join-Path $dir 'open-count.txt'
+$cursorF = Join-Path $dir '.activity-cursor'
+$slfile  = Join-Path $dir 'statusline.txt'
 
 $headers = @{ 'Content-Type' = 'application/json' }
 if ($PLURIBUSAI_TOKEN) { $headers['Authorization'] = "Bearer $PLURIBUSAI_TOKEN" }
 
-$count = $null
-try {
-  $resp  = Invoke-RestMethod -Uri "$PLURIBUSAI_ENDPOINT/mcp" -Method Post -Body $body `
-            -Headers $headers -TimeoutSec 8
-  $inner = $resp.result.content[0].text | ConvertFrom-Json
-  $count = [int]$inner.count
-} catch { $count = $null }
+function Show-Toast($text) {
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    $n = New-Object System.Windows.Forms.NotifyIcon
+    $n.Icon = [System.Drawing.SystemIcons]::Information
+    $n.Visible = $true
+    $n.ShowBalloonTip(5000, 'PluribusAI', $text, 'Info')
+    Start-Sleep -Seconds 6
+    $n.Dispose()
+  } catch {}
+}
 
-if ($count -ne $null) {
-  [System.IO.File]::WriteAllText($cache, "$count")
-  $prev = 0; if (Test-Path $last) { $prev = [int](Get-Content $last) }
-  if ($count -gt $prev) {
-    try {
-      Add-Type -AssemblyName System.Windows.Forms
-      $n = New-Object System.Windows.Forms.NotifyIcon
-      $n.Icon = [System.Drawing.SystemIcons]::Information
-      $n.Visible = $true
-      $n.ShowBalloonTip(5000, 'PluribusAI', "$count new message(s)", 'Info')
-      Start-Sleep -Seconds 6
-      $n.Dispose()
-    } catch {}
+$cursor = 0.0
+if (Test-Path $cursorF) { $cursor = [double](Get-Content $cursorF) }
+$actUri = "$PLURIBUSAI_ENDPOINT/activity?user=$PLURIBUSAI_USER&since=$cursor&timeout=55&limit=50"
+try {
+  $act = Invoke-RestMethod -Uri $actUri -Method Get -Headers $headers -TimeoutSec 65
+  foreach ($e in $act.events) {
+    if ($e.type -eq 'reply') { Show-Toast "$($e.author) replied on $($e.message_id)" }
+    else { Show-Toast "New message from $($e.sender)" }
   }
-  [System.IO.File]::WriteAllText($last, "$count")
+  if ($act.count -gt 0) {
+    [System.IO.File]::WriteAllText($cursorF, "$($act.cursor)")
+  }
+} catch {}
+
+$body = @{ jsonrpc='2.0'; id=1; method='tools/call'; params=@{
+  name='get_inbox'; arguments=@{ user=$PLURIBUSAI_USER } } } | ConvertTo-Json -Depth 6
+try {
+  $resp = Invoke-RestMethod -Uri "$PLURIBUSAI_ENDPOINT/mcp" -Method Post -Body $body `
+    -Headers $headers -TimeoutSec 8
+  $count = [int](($resp.result.content[0].text | ConvertFrom-Json).count)
+  [System.IO.File]::WriteAllText($cache, "$count")
   if ($count -eq 0) { $txt = 'pluribusai: clear' }
-  else              { $txt = "pluribusai: $count new" }
-} else {
+  else { $txt = "pluribusai: $count new" }
+} catch {
   [System.IO.File]::WriteAllText($cache, '?')
   $txt = 'pluribusai: ?'
 }
@@ -115,11 +125,14 @@ sh.Run "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File 
 VBS
 VBS_WIN=$(cygpath -w "$DIR/poll-hidden.vbs")
 
-say "Configuring statusLine..."
+say "Configuring statusLine + SessionStart hook..."
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
 SL_FILE_WIN="$DIR_WIN\\statusline.txt"
+SS_FILE_WIN="$DIR_WIN\\session-start.ps1"
 if command -v python >/dev/null 2>&1; then
-  SL_CMD="cmd /c type \"$SL_FILE_WIN\"" python - "$SETTINGS" <<'PY'
+  SL_CMD="cmd /c type \"$SL_FILE_WIN\""
+  export SL_CMD
+  python - "$SETTINGS" <<'PY'
 import json,os,sys
 p=sys.argv[1]
 try: d=json.load(open(p))
@@ -127,12 +140,15 @@ except Exception: d={}
 d["statusLine"]={"type":"command","command":os.environ["SL_CMD"]}
 json.dump(d,open(p,"w"),indent=2)
 PY
+  SS_CMD="powershell -NoProfile -ExecutionPolicy Bypass -File \"$SS_FILE_WIN\""
+  python "$(dirname "$0")/hooks_util.py" install "$SETTINGS" "$SS_CMD"
 fi
 
 say "Creating scheduled task '$TASK'..."
 schtasks //Create //TN "$TASK" //SC MINUTE //MO 1 //F //TR "wscript.exe \"$VBS_WIN\"" >/dev/null
 
 PS1_WIN=$(cygpath -w "$DIR/poll.ps1")
+echo "0" > "$DIR/.activity-cursor"
 powershell -NoProfile -ExecutionPolicy Bypass -File "$PS1_WIN" >/dev/null 2>&1 || true
 
 say "Done. Restart Claude. Endpoint: $ENDPOINT/mcp"

@@ -11,11 +11,13 @@ Local dev is pure stdlib (SQLite). Postgres mode needs pg8000 (+ boto3 for IAM).
 
 import json
 import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 from store import make_store
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 TOKEN = os.environ.get("PLURIBUSAI_TOKEN")
 PORT = int(os.environ.get("PLURIBUSAI_HTTP_PORT", "8787"))
@@ -62,6 +64,13 @@ def t_get_message(a):
 
 def t_list_recent(a):
     return STORE.list_recent(limit=a.get("limit", 30))
+
+
+def t_get_activity(a):
+    if not a.get("user"):
+        raise ValueError("'user' is required")
+    return STORE.get_activity(
+        a["user"], since=a.get("since", 0), limit=a.get("limit", 50))
 
 
 TOOLS = {
@@ -142,7 +151,54 @@ TOOLS = {
             "properties": {"limit": {"type": "integer"}},
         },
     },
+    "get_activity": {
+        "fn": t_get_activity,
+        "description": "Activity feed for a user since a timestamp: new messages "
+                       "addressed to them and replies on threads they participate in "
+                       "(sender, reader, or prior replier). Use 'cursor' from the "
+                       "response as the next 'since' value.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "user": {"type": "string"},
+                "since": {
+                    "type": "number",
+                    "description": "Unix timestamp; return events after this time.",
+                },
+                "limit": {"type": "integer"},
+            },
+            "required": ["user"],
+        },
+    },
 }
+
+
+def _parse_activity_query(path):
+    qs = parse_qs(urlparse(path).query)
+    user = (qs.get("user") or [None])[0]
+    try:
+        since = float((qs.get("since") or ["0"])[0])
+    except (TypeError, ValueError):
+        since = 0.0
+    try:
+        timeout = int((qs.get("timeout") or ["30"])[0])
+    except (TypeError, ValueError):
+        timeout = 30
+    try:
+        limit = int((qs.get("limit") or ["50"])[0])
+    except (TypeError, ValueError):
+        limit = 50
+    return user, since, max(1, min(timeout, 60)), max(1, min(limit, 100))
+
+
+def _wait_activity(user, since, timeout, limit):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        result = STORE.get_activity(user, since=since, limit=limit)
+        if result["count"] > 0:
+            return result
+        time.sleep(1)
+    return STORE.get_activity(user, since=since, limit=limit)
 
 
 def handle_rpc(msg):
@@ -208,10 +264,21 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        if self.path == "/health":
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
             self._send(200, {"status": "ok", "version": VERSION})
-        else:
-            self._send(404, {"error": "not found"})
+            return
+        if path == "/activity":
+            if not self._auth_ok():
+                self._send(401, {"error": "unauthorized"})
+                return
+            user, since, timeout, limit = _parse_activity_query(self.path)
+            if not user:
+                self._send(400, {"error": "query param 'user' is required"})
+                return
+            self._send(200, _wait_activity(user, since, timeout, limit))
+            return
+        self._send(404, {"error": "not found"})
 
     def do_POST(self):
         if self.path.rstrip("/") != "/mcp":

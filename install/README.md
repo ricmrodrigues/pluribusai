@@ -1,7 +1,10 @@
 # PluribusAI client setup
 
-Registers the MCP server with **Claude Code** and installs ambient notifications
-(status line + desktop ping on new messages).
+Registers the MCP server with **Claude Code** and installs:
+
+- **Status line** — unread count in the Claude footer
+- **Activity poller** — long-poll `GET /activity` for new messages *and* thread replies
+- **SessionStart hook** — injects inbox summary when a session begins
 
 ## Prerequisites
 

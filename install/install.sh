@@ -35,6 +35,7 @@ d=json.load(open(p))
 d.pop("statusLine",None)
 json.dump(d,open(p,"w"),indent=2)
 PY
+  python3 "$(dirname "$0")/hooks_util.py" uninstall "$SETTINGS" 2>/dev/null || true
   say "Removed."
   exit 0
 fi
@@ -81,8 +82,11 @@ chmod 600 "$DIR/env"
 cat > "$DIR/poll.sh" <<'EOF'
 #!/bin/sh
 . "$HOME/.pluribusai/env"
-DIR="$HOME/.pluribusai"; CACHE="$DIR/open-count.txt"; LAST="$DIR/.last-count"
-while :; do
+DIR="$HOME/.pluribusai"
+CACHE="$DIR/open-count.txt"
+CURSOR="$DIR/.activity-cursor"
+notify() { osascript -e "display notification \"$1\" with title \"PluribusAI\" sound name \"Glass\"" 2>/dev/null; }
+refresh_inbox() {
   req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"get_inbox\",\"arguments\":{\"user\":\"$PLURIBUSAI_USER\"}}}"
   if [ -n "$PLURIBUSAI_TOKEN" ]; then
     count=$(curl -s --max-time 8 -X POST "$PLURIBUSAI_ENDPOINT/mcp" \
@@ -93,22 +97,41 @@ while :; do
       -H 'Content-Type: application/json' \
       -d "$req" 2>/dev/null | python3 -c "import sys,json;print(json.loads(json.load(sys.stdin)['result']['content'][0]['text'])['count'])" 2>/dev/null)
   fi
-  if [ -n "$count" ]; then
-    echo "$count" > "$CACHE"
-    case "$count" in (''|*[!0-9]*) : ;; (*)
-      prev=$(cat "$LAST" 2>/dev/null || echo 0)
-      if [ "$count" -gt "$prev" ] 2>/dev/null; then
-        osascript -e "display notification \"$count new message(s)\" with title \"PluribusAI\" sound name \"Glass\"" 2>/dev/null
-      fi
-      echo "$count" > "$LAST" ;;
-    esac
+  if [ -n "$count" ]; then echo "$count" > "$CACHE"; else echo "?" > "$CACHE"; fi
+}
+while :; do
+  cursor=$(cat "$CURSOR" 2>/dev/null || echo 0)
+  url="$PLURIBUSAI_ENDPOINT/activity?user=$PLURIBUSAI_USER&since=$cursor&timeout=55&limit=50"
+  if [ -n "$PLURIBUSAI_TOKEN" ]; then
+    body=$(curl -s --max-time 65 -G "$url" -H "Authorization: Bearer $PLURIBUSAI_TOKEN")
   else
-    echo "?" > "$CACHE"
+    body=$(curl -s --max-time 65 -G "$url")
   fi
-  sleep "${PLURIBUSAI_REFRESH:-60}"
+  python3 - "$body" "$CURSOR" <<'PY'
+import json, sys, subprocess
+body, cursor_path = sys.argv[1], sys.argv[2]
+try:
+    data = json.loads(body or "{}")
+except Exception:
+    data = {"events": [], "count": 0, "cursor": 0}
+events = data.get("events") or []
+if events:
+    for e in events:
+        if e.get("type") == "reply":
+            msg = f"{e.get('author')} replied on {e.get('message_id')}"
+        else:
+            msg = f"New message from {e.get('sender')}"
+        subprocess.run(["osascript", "-e",
+            f'display notification "{msg}" with title "PluribusAI" sound name "Glass"'],
+            check=False)
+    open(cursor_path, "w").write(str(data.get("cursor", 0)))
+PY
+  refresh_inbox
 done
 EOF
 chmod +x "$DIR/poll.sh"
+cp "$(dirname "$0")/session-start.sh" "$DIR/session-start.sh"
+chmod +x "$DIR/session-start.sh"
 
 cat > "$DIR/statusline.sh" <<'EOF'
 #!/bin/sh
@@ -124,7 +147,7 @@ else printf '\033[33m⬡ pluribusai: %s new\033[0m' "$count"; fi
 EOF
 chmod +x "$DIR/statusline.sh"
 
-say "Configuring Claude statusLine..."
+say "Configuring Claude statusLine + SessionStart hook..."
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
 python3 - "$SETTINGS" <<'PY'
 import json,sys
@@ -134,6 +157,7 @@ except Exception: d={}
 d["statusLine"]={"type":"command","command":"sh ~/.pluribusai/statusline.sh"}
 json.dump(d,open(p,"w"),indent=2)
 PY
+python3 "$(dirname "$0")/hooks_util.py" install "$SETTINGS" "sh $DIR/session-start.sh"
 
 say "Installing launchd poller ($LABEL)..."
 cat > "$PLIST" <<EOF
@@ -158,7 +182,8 @@ auth=()
 c=$(curl -s --max-time 10 -X POST "$ENDPOINT/mcp" -H 'Content-Type: application/json' \
   "${auth[@]}" -d "$req" 2>/dev/null \
   | python3 -c "import sys,json;print(json.loads(json.load(sys.stdin)['result']['content'][0]['text'])['count'])" 2>/dev/null) || true
-echo "${c:-?}" > "$DIR/open-count.txt"; echo "${c:-0}" > "$DIR/.last-count"
+echo "${c:-?}" > "$DIR/open-count.txt"
+echo "0" > "$DIR/.activity-cursor"
 
 echo
 if [ -n "$c" ]; then

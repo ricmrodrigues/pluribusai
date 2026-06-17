@@ -76,6 +76,9 @@ Add to MCP settings (`.cursor/mcp.json` or Cursor Settings → MCP):
 | `reply_message` | Reply to a thread |
 | `get_message` | Full thread + replies + read receipts |
 | `list_recent` | Team history, newest first |
+| `get_activity` | New messages + replies on your threads (use `cursor` as next `since`) |
+
+HTTP: `GET /activity?user=…&since=…&timeout=30` long-polls for the same feed.
 
 ### Example prompts
 
@@ -117,9 +120,9 @@ python3 tests/test_lifecycle.py
 |------|------|
 | `server.py`, `store.py` | MCP server + storage backends |
 | `docker-compose.yml` | One-command self-host |
-| `install/` | Client setup + notification poller |
+| `install/` | Client setup, activity poller, SessionStart hook |
 | `website/` | Marketing site (GitHub Pages) |
-| `docs/` | Brand, open-core boundary |
+| `docs/` | Protocol, brand, open-core boundary |
 
 ---
 

@@ -60,6 +60,19 @@ def _addressed_to(audience_val, user):
     return False
 
 
+def _preview(text, n=120):
+    if not text:
+        return ""
+    s = str(text).replace("\n", " ").strip()
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _activity_result(events, since, limit):
+    events = sorted(events, key=lambda e: e["created_at"])[: int(limit)]
+    cursor = max((e["created_at"] for e in events), default=float(since))
+    return {"events": events, "count": len(events), "cursor": cursor}
+
+
 # --------------------------------------------------------------------------- #
 # SQLite
 # --------------------------------------------------------------------------- #
@@ -157,6 +170,57 @@ class SqliteStore:
         for r in rows:
             r["audience"] = _audience_from_str(r["audience"])
         return {"messages": rows, "count": len(rows)}
+
+    def _participates(self, c, user, message_id, msg_sender=None):
+        if msg_sender == user:
+            return True
+        if c.execute("SELECT 1 FROM message_reads WHERE message_id=? AND user=?",
+                      (message_id, user)).fetchone():
+            return True
+        if c.execute("SELECT 1 FROM message_replies WHERE message_id=? AND author=?",
+                      (message_id, user)).fetchone():
+            return True
+        return False
+
+    def get_activity(self, user, since=0.0, limit=50):
+        since = float(since or 0)
+        limit = max(1, min(int(limit or 50), 100))
+        events = []
+        with self._conn() as c:
+            for r in c.execute(
+                    "SELECT * FROM messages WHERE created_at > ? AND sender != ? "
+                    "ORDER BY created_at ASC", (since, user)):
+                row = dict(r)
+                aud = _audience_from_str(row["audience"])
+                if not _addressed_to(aud, user):
+                    continue
+                events.append({
+                    "type": "message",
+                    "id": row["id"],
+                    "message_id": row["id"],
+                    "sender": row["sender"],
+                    "kind": row["kind"],
+                    "preview": _preview(row["content"]),
+                    "created_at": row["created_at"],
+                })
+            for r in c.execute(
+                    "SELECT r.*, m.sender AS msg_sender FROM message_replies r "
+                    "JOIN messages m ON m.id = r.message_id "
+                    "WHERE r.created_at > ? AND r.author != ? "
+                    "ORDER BY r.created_at ASC", (since, user)):
+                row = dict(r)
+                if not self._participates(c, user, row["message_id"], row["msg_sender"]):
+                    continue
+                events.append({
+                    "type": "reply",
+                    "id": row["id"],
+                    "message_id": row["message_id"],
+                    "reply_id": row["id"],
+                    "author": row["author"],
+                    "preview": _preview(row["content"]),
+                    "created_at": row["created_at"],
+                })
+        return _activity_result(events, since, limit)
 
 
 # --------------------------------------------------------------------------- #
@@ -315,6 +379,61 @@ class PostgresStore:
         for r in rows:
             r["audience"] = _audience_from_str(r["audience"])
         return {"messages": rows, "count": len(rows)}
+
+    def _participates(self, cur, user, message_id, msg_sender=None):
+        if msg_sender == user:
+            return True
+        cur.execute('SELECT 1 FROM message_reads WHERE message_id=%s AND "user"=%s',
+                    (message_id, user))
+        if cur.fetchall():
+            return True
+        cur.execute("SELECT 1 FROM message_replies WHERE message_id=%s AND author=%s",
+                    (message_id, user))
+        return bool(cur.fetchall())
+
+    def get_activity(self, user, since=0.0, limit=50):
+        since = float(since or 0)
+        limit = max(1, min(int(limit or 50), 100))
+        events = []
+        c = self._connect()
+        try:
+            cur = c.cursor()
+            cur.execute(
+                "SELECT * FROM messages WHERE created_at > %s AND sender != %s "
+                "ORDER BY created_at ASC", (since, user))
+            for row in self._dicts(cur):
+                aud = _audience_from_str(row["audience"])
+                if not _addressed_to(aud, user):
+                    continue
+                events.append({
+                    "type": "message",
+                    "id": row["id"],
+                    "message_id": row["id"],
+                    "sender": row["sender"],
+                    "kind": row["kind"],
+                    "preview": _preview(row["content"]),
+                    "created_at": row["created_at"],
+                })
+            cur.execute(
+                "SELECT r.*, m.sender AS msg_sender FROM message_replies r "
+                "JOIN messages m ON m.id = r.message_id "
+                "WHERE r.created_at > %s AND r.author != %s "
+                "ORDER BY r.created_at ASC", (since, user))
+            for row in self._dicts(cur):
+                if not self._participates(cur, user, row["message_id"], row["msg_sender"]):
+                    continue
+                events.append({
+                    "type": "reply",
+                    "id": row["id"],
+                    "message_id": row["message_id"],
+                    "reply_id": row["id"],
+                    "author": row["author"],
+                    "preview": _preview(row["content"]),
+                    "created_at": row["created_at"],
+                })
+        finally:
+            c.close()
+        return _activity_result(events, since, limit)
 
 
 def _default_db_path():

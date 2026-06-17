@@ -18,3 +18,7 @@ jobs:
         run: python3 -m py_compile server.py store.py
       - name: Lifecycle tests
         run: python3 tests/test_lifecycle.py
+      - name: Activity tests
+        run: python3 tests/test_activity.py
+      - name: HTTP tests
+        run: python3 tests/test_http.py
