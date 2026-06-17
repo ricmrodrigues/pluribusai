@@ -72,7 +72,7 @@ fi
 say "  registered -> $ENDPOINT/mcp"
 
 say "Registering PluribusAI with Cursor..."
-CURSOR_CFG=$(python3 "$(dirname "$0")/cursor_util.py" install "$ENDPOINT" "$TOKEN")
+CURSOR_CFG=$(python3 "$(dirname "$0")/cursor_util.py" install "$ENDPOINT" "$TOKEN" "$USER_ID")
 say "  cursor -> $CURSOR_CFG"
 
 say "Writing poller + statusline to $DIR ..."
@@ -84,56 +84,7 @@ PLURIBUSAI_REFRESH="$REFRESH_SECS"
 EOF
 chmod 600 "$DIR/env"
 
-cat > "$DIR/poll.sh" <<'EOF'
-#!/bin/sh
-. "$HOME/.pluribusai/env"
-DIR="$HOME/.pluribusai"
-CACHE="$DIR/open-count.txt"
-CURSOR="$DIR/.activity-cursor"
-notify() { osascript -e "display notification \"$1\" with title \"PluribusAI\" sound name \"Glass\"" 2>/dev/null; }
-refresh_inbox() {
-  req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"get_inbox\",\"arguments\":{\"user\":\"$PLURIBUSAI_USER\"}}}"
-  if [ -n "$PLURIBUSAI_TOKEN" ]; then
-    count=$(curl -s --max-time 8 -X POST "$PLURIBUSAI_ENDPOINT/mcp" \
-      -H 'Content-Type: application/json' -H "Authorization: Bearer $PLURIBUSAI_TOKEN" \
-      -d "$req" 2>/dev/null | python3 -c "import sys,json;print(json.loads(json.load(sys.stdin)['result']['content'][0]['text'])['count'])" 2>/dev/null)
-  else
-    count=$(curl -s --max-time 8 -X POST "$PLURIBUSAI_ENDPOINT/mcp" \
-      -H 'Content-Type: application/json' \
-      -d "$req" 2>/dev/null | python3 -c "import sys,json;print(json.loads(json.load(sys.stdin)['result']['content'][0]['text'])['count'])" 2>/dev/null)
-  fi
-  if [ -n "$count" ]; then echo "$count" > "$CACHE"; else echo "?" > "$CACHE"; fi
-}
-while :; do
-  cursor=$(cat "$CURSOR" 2>/dev/null || echo 0)
-  url="$PLURIBUSAI_ENDPOINT/activity?user=$PLURIBUSAI_USER&since=$cursor&timeout=55&limit=50"
-  if [ -n "$PLURIBUSAI_TOKEN" ]; then
-    body=$(curl -s --max-time 65 -G "$url" -H "Authorization: Bearer $PLURIBUSAI_TOKEN")
-  else
-    body=$(curl -s --max-time 65 -G "$url")
-  fi
-  python3 - "$body" "$CURSOR" <<'PY'
-import json, sys, subprocess
-body, cursor_path = sys.argv[1], sys.argv[2]
-try:
-    data = json.loads(body or "{}")
-except Exception:
-    data = {"events": [], "count": 0, "cursor": 0}
-events = data.get("events") or []
-if events:
-    for e in events:
-        if e.get("type") == "reply":
-            msg = f"{e.get('author')} replied on {e.get('message_id')}"
-        else:
-            msg = f"New message from {e.get('sender')}"
-        subprocess.run(["osascript", "-e",
-            f'display notification "{msg}" with title "PluribusAI" sound name "Glass"'],
-            check=False)
-    open(cursor_path, "w").write(str(data.get("cursor", 0)))
-PY
-  refresh_inbox
-done
-EOF
+cp "$(dirname "$0")/poll-macos.sh" "$DIR/poll.sh"
 chmod +x "$DIR/poll.sh"
 cp "$(dirname "$0")/session-start.sh" "$DIR/session-start.sh"
 chmod +x "$DIR/session-start.sh"
@@ -181,9 +132,9 @@ launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST"
 
 say "Priming inbox cache..."
-req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"get_inbox\",\"arguments\":{\"user\":\"$USER_ID\"}}}"
-auth=()
-[ -n "$TOKEN" ] && auth=(-H "Authorization: Bearer $TOKEN")
+req='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_inbox","arguments":{}}}'
+auth=(-H "X-PluribusAI-User: $USER_ID")
+[ -n "$TOKEN" ] && auth=("${auth[@]}" -H "Authorization: Bearer $TOKEN")
 c=$(curl -s --max-time 10 -X POST "$ENDPOINT/mcp" -H 'Content-Type: application/json' \
   "${auth[@]}" -d "$req" 2>/dev/null \
   | python3 -c "import sys,json;print(json.loads(json.load(sys.stdin)['result']['content'][0]['text'])['count'])" 2>/dev/null) || true

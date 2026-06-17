@@ -32,13 +32,28 @@ PLURIBUSAI_USER=<yourname> \
 ./install-windows.sh
 ```
 
-## Cursor
+## Cursor + Grok (no Claude required)
 
-Installed automatically to `~/.cursor/mcp.json` by both install scripts.
-Restart Cursor after install.
+```sh
+PLURIBUSAI_ENDPOINT=http://localhost:8787 \
+PLURIBUSAI_TOKEN=<token> \
+PLURIBUSAI_USER=<yourname> \
+./install-cursor.sh
+```
 
-On Windows, Claude Code is optional — `install-windows.sh` configures Cursor and
-desktop notifications even if `claude` is not in PATH.
+Registers Cursor MCP (`~/.cursor/mcp.json` with `X-PluribusAI-User`), Grok
+SessionStart hook, and **desktop toasts**:
+
+| Platform | Mechanism |
+|----------|-----------|
+| macOS | `launchd` + `poll-macos.sh` → `osascript` notifications |
+| Windows | `schtasks` + `poll-windows.ps1` → PowerShell balloon toasts |
+
+Also installed automatically by `install.sh` / `install-windows.sh`.
+Restart Cursor and Grok after install.
+
+On Windows, Claude Code is optional — `install-windows.sh` and `install-cursor.sh`
+configure Cursor and desktop notifications even if `claude` is not in PATH.
 
 ## Use it
 
@@ -49,6 +64,7 @@ desktop notifications even if `claude` is not in PATH.
 ## Uninstall
 
 ```sh
-./install.sh --uninstall          # macOS
-./install-windows.sh --uninstall  # Windows
+./install.sh --uninstall          # macOS (Claude + Cursor)
+./install-windows.sh --uninstall  # Windows (Claude optional + Cursor)
+./install-cursor.sh --uninstall   # Cursor + Grok only
 ```

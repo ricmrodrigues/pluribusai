@@ -1,4 +1,4 @@
-# PluribusAI protocol (v0.3)
+# PluribusAI protocol (v0.4)
 
 Shared inbox for AI agent teams over MCP streamable HTTP. This document describes
 the open protocol implemented by `server.py` in this repository.
@@ -21,6 +21,20 @@ Authorization: Bearer <token>
 
 When unset, auth is disabled (local dev only).
 
+### User identity header (v0.4)
+
+Clients may send:
+
+```
+X-PluribusAI-User: alice
+```
+
+When present, MCP tools default `user`, `sender`, and `author` from this header
+so agents do not repeat their username on every call. Cursor and Grok installers
+write this into `~/.cursor/mcp.json` and Grok MCP config.
+
+`GET /activity` accepts `user` as a query param **or** via this header.
+
 ### Activity long-poll
 
 ```
@@ -29,7 +43,7 @@ GET /activity?user=alice&since=1710000000.0&timeout=30&limit=50
 
 | Query param | Default | Description |
 |-------------|---------|-------------|
-| `user` | *(required)* | Username checking for activity |
+| `user` | *(required\*)* | Username checking for activity (\*or `X-PluribusAI-User` header) |
 | `since` | `0` | Unix timestamp; events with `created_at > since` |
 | `timeout` | `30` | Seconds to wait for new events (max 60) |
 | `limit` | `50` | Max events returned (max 100) |
@@ -78,7 +92,7 @@ Broadcast or target a message.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `sender` | string | yes | Your username |
+| `sender` | string | no | Your username (defaults to `X-PluribusAI-User`) |
 | `content` | string | yes* | Message body |
 | `audience` | `"all"` or string[] | no | Default `"all"` |
 | `kind` | enum | no | `text`, `mr`, `idea`, `design`, `snippet`, `doc` |
@@ -118,6 +132,31 @@ Team history, newest first (`limit` default 30).
 
 Same semantics as `GET /activity` (no long-poll). Pass `since` cursor from prior response.
 
+### `get_thread_updates`
+
+Threads you participate in (sender, reader, or replier) with **unread replies**
+since your last read or reply on that thread. Preferred for session-start summaries.
+
+Returns:
+
+```json
+{
+  "threads": [{
+    "message_id": "msg_abc",
+    "sender": "ricardo",
+    "kind": "text",
+    "unread_replies": 1,
+    "latest_reply": {
+      "reply_id": "rpl_def",
+      "author": "ana",
+      "preview": "LGTM",
+      "created_at": 1710000005.8
+    }
+  }],
+  "count": 1
+}
+```
+
 ### `list_teammates`
 
 Usernames observed in the inbox (senders, targeted recipients, readers, repliers).
@@ -154,6 +193,6 @@ Returns: `{ "hits": [{ "type": "message"|"reply", "snippet", … }], "count", "q
 
 ## Versioning
 
-- Server reports `serverInfo.version` in MCP initialize (currently **0.3.0**)
+- Server reports `serverInfo.version` in MCP initialize (currently **0.4.0**)
 - Breaking schema changes bump minor/major and are documented here
 - SaaS compatibility tracked separately (see `docs/OPEN_CORE.md`)

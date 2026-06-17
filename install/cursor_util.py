@@ -8,7 +8,7 @@ def cursor_mcp_path():
     return os.path.join(os.path.expanduser("~"), ".cursor", "mcp.json")
 
 
-def install_cursor(endpoint, token):
+def install_cursor(endpoint, token, user=""):
     endpoint = endpoint.rstrip("/")
     path = cursor_mcp_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -18,8 +18,13 @@ def install_cursor(endpoint, token):
     except Exception:
         data = {}
     entry = {"url": f"{endpoint}/mcp"}
+    headers = {}
     if token:
-        entry["headers"] = {"Authorization": f"Bearer {token}"}
+        headers["Authorization"] = f"Bearer {token}"
+    if user:
+        headers["X-PluribusAI-User"] = user
+    if headers:
+        entry["headers"] = headers
     data.setdefault("mcpServers", {})["pluribusai"] = entry
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
@@ -47,7 +52,11 @@ def uninstall_cursor():
 if __name__ == "__main__":
     action = sys.argv[1]
     if action == "install":
-        install_cursor(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "")
+        install_cursor(
+            sys.argv[2],
+            sys.argv[3] if len(sys.argv) > 3 else "",
+            sys.argv[4] if len(sys.argv) > 4 else "",
+        )
         print(cursor_mcp_path())
     elif action == "uninstall":
         uninstall_cursor()

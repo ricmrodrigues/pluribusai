@@ -9,6 +9,7 @@ Auth:      optional bearer token via PLURIBUSAI_TOKEN.
 Local dev is pure stdlib (SQLite). Postgres mode needs pg8000 (+ boto3 for IAM).
 """
 
+import contextvars
 import json
 import os
 import time
@@ -17,7 +18,9 @@ from urllib.parse import parse_qs, urlparse
 
 from store import make_store
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
+
+CURRENT_USER = contextvars.ContextVar("pluribusai_user", default=None)
 
 TOKEN = os.environ.get("PLURIBUSAI_TOKEN")
 PORT = int(os.environ.get("PLURIBUSAI_HTTP_PORT", "8787"))
@@ -30,11 +33,23 @@ STORE = make_store()
 # Tool implementations
 # --------------------------------------------------------------------------- #
 
+def _user(a, field="user"):
+    u = a.get(field) or CURRENT_USER.get()
+    if not u:
+        raise ValueError(
+            f"'{field}' is required (or set X-PluribusAI-User header)")
+    return u
+
+
+def _identity(a, field):
+    return a.get(field) or CURRENT_USER.get() or "unknown"
+
+
 def t_send_message(a):
     if not a.get("content") and not a.get("ref"):
         raise ValueError("provide 'content' (and/or 'ref')")
     return STORE.send_message(
-        sender=a.get("sender", "unknown"),
+        sender=_identity(a, "sender"),
         audience=a.get("audience", "all"),
         content=a.get("content"),
         kind=a.get("kind", "text"),
@@ -42,19 +57,15 @@ def t_send_message(a):
 
 
 def t_get_inbox(a):
-    if not a.get("user"):
-        raise ValueError("'user' is required (who is checking their inbox)")
-    return STORE.get_inbox(a["user"])
+    return STORE.get_inbox(_user(a))
 
 
 def t_read_message(a):
-    if not a.get("user"):
-        raise ValueError("'user' is required")
-    return STORE.read_message(a["message_id"], a["user"])
+    return STORE.read_message(a["message_id"], _user(a))
 
 
 def t_reply_message(a):
-    return STORE.reply_message(a["message_id"], a.get("author", "unknown"),
+    return STORE.reply_message(a["message_id"], _identity(a, "author"),
                                a["content"])
 
 
@@ -67,10 +78,12 @@ def t_list_recent(a):
 
 
 def t_get_activity(a):
-    if not a.get("user"):
-        raise ValueError("'user' is required")
     return STORE.get_activity(
-        a["user"], since=a.get("since", 0), limit=a.get("limit", 50))
+        _user(a), since=a.get("since", 0), limit=a.get("limit", 50))
+
+
+def t_get_thread_updates(a):
+    return STORE.get_thread_updates(_user(a), limit=a.get("limit", 30))
 
 
 def t_list_teammates(a):
@@ -99,7 +112,10 @@ TOOLS = {
         "schema": {
             "type": "object",
             "properties": {
-                "sender": {"type": "string", "description": "Your username."},
+                "sender": {
+                    "type": "string",
+                    "description": "Your username (defaults to X-PluribusAI-User).",
+                },
                 "audience": {
                     "description": "\"all\" for a broadcast, or a JSON array of "
                                    "usernames to target.",
@@ -111,18 +127,22 @@ TOOLS = {
                 "content": {"type": "string", "description": "Message / artifact text."},
                 "ref": {"type": "string", "description": "Optional URL (MR, page)."},
             },
-            "required": ["sender", "content"],
+            "required": ["content"],
         },
     },
     "get_inbox": {
         "fn": t_get_inbox,
         "description": "PEEK at your unread messages (addressed to you or broadcast, "
                        "excluding your own). Does NOT mark anything read — safe for "
-                       "pollers to call repeatedly. Pass your username as 'user'.",
+                       "pollers to call repeatedly. User defaults to X-PluribusAI-User.",
         "schema": {
             "type": "object",
-            "properties": {"user": {"type": "string"}},
-            "required": ["user"],
+            "properties": {
+                "user": {
+                    "type": "string",
+                    "description": "Defaults to X-PluribusAI-User header.",
+                },
+            },
         },
     },
     "read_message": {
@@ -131,9 +151,14 @@ TOOLS = {
                        "but stays unread for everyone else who hasn't read it.",
         "schema": {
             "type": "object",
-            "properties": {"message_id": {"type": "string"},
-                           "user": {"type": "string"}},
-            "required": ["message_id", "user"],
+            "properties": {
+                "message_id": {"type": "string"},
+                "user": {
+                    "type": "string",
+                    "description": "Defaults to X-PluribusAI-User header.",
+                },
+            },
+            "required": ["message_id"],
         },
     },
     "reply_message": {
@@ -142,10 +167,15 @@ TOOLS = {
                        "message read for you.",
         "schema": {
             "type": "object",
-            "properties": {"message_id": {"type": "string"},
-                           "author": {"type": "string"},
-                           "content": {"type": "string"}},
-            "required": ["message_id", "author", "content"],
+            "properties": {
+                "message_id": {"type": "string"},
+                "author": {
+                    "type": "string",
+                    "description": "Defaults to X-PluribusAI-User header.",
+                },
+                "content": {"type": "string"},
+            },
+            "required": ["message_id", "content"],
         },
     },
     "get_message": {
@@ -175,14 +205,32 @@ TOOLS = {
         "schema": {
             "type": "object",
             "properties": {
-                "user": {"type": "string"},
+                "user": {
+                    "type": "string",
+                    "description": "Defaults to X-PluribusAI-User header.",
+                },
                 "since": {
                     "type": "number",
                     "description": "Unix timestamp; return events after this time.",
                 },
                 "limit": {"type": "integer"},
             },
-            "required": ["user"],
+        },
+    },
+    "get_thread_updates": {
+        "fn": t_get_thread_updates,
+        "description": "Threads you participate in with unread replies since your last "
+                       "read or reply. Better than get_activity for session-start summaries "
+                       "(no duplicate username in every line).",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "user": {
+                    "type": "string",
+                    "description": "Defaults to X-PluribusAI-User header.",
+                },
+                "limit": {"type": "integer"},
+            },
         },
     },
     "list_teammates": {
@@ -293,6 +341,11 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _apply_user_header(self):
+        u = self.headers.get("X-PluribusAI-User")
+        if u and u.strip():
+            CURRENT_USER.set(u.strip())
+
     def _auth_ok(self):
         if not TOKEN:
             return True
@@ -307,6 +360,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
+        self._apply_user_header()
         path = self.path.split("?", 1)[0]
         if path == "/health":
             self._send(200, {"status": "ok", "version": VERSION})
@@ -317,13 +371,16 @@ class Handler(BaseHTTPRequestHandler):
                 return
             user, since, timeout, limit = _parse_activity_query(self.path)
             if not user:
-                self._send(400, {"error": "query param 'user' is required"})
+                user = CURRENT_USER.get()
+            if not user:
+                self._send(400, {"error": "query param 'user' or X-PluribusAI-User required"})
                 return
             self._send(200, _wait_activity(user, since, timeout, limit))
             return
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        self._apply_user_header()
         if self.path.rstrip("/") != "/mcp":
             self._send(404, {"error": "not found"})
             return

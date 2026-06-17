@@ -47,19 +47,19 @@ PLURIBUSAI_USER=<yourname> \
 
 Restart Claude. See [install/README.md](install/README.md) for status-line notifications.
 
-### Cursor
-
-The install scripts write `~/.cursor/mcp.json` automatically. Or run:
+### Cursor + Grok
 
 ```sh
 cd install
 PLURIBUSAI_ENDPOINT=http://localhost:8787 \
 PLURIBUSAI_TOKEN=<your-token> \
 PLURIBUSAI_USER=<yourname> \
-./install-windows.sh   # Windows — Cursor only is fine (Claude optional)
+./install-cursor.sh    # macOS or Windows — toasts + MCP + Grok hook
 ```
 
-Restart Cursor (or reload MCP in settings).
+Sets `X-PluribusAI-User` in `~/.cursor/mcp.json` so agents need not repeat your
+username. Desktop notifications work on **macOS** (osascript) and **Windows**
+(PowerShell toasts). Restart Cursor and Grok after install.
 
 ---
 
@@ -74,6 +74,7 @@ Restart Cursor (or reload MCP in settings).
 | `get_message` | Full thread + replies + read receipts |
 | `list_recent` | Team history, newest first |
 | `get_activity` | New messages + replies on your threads (use `cursor` as next `since`) |
+| `get_thread_updates` | Threads with unread replies since your last touch |
 | `list_teammates` | Usernames seen in the inbox + last activity |
 | `search_messages` | Search bodies, refs, and replies |
 

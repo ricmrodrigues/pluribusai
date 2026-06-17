@@ -24,3 +24,7 @@ jobs:
         run: python3 tests/test_http.py
       - name: v0.3 tests
         run: python3 tests/test_v03.py
+      - name: Thread updates tests
+        run: python3 tests/test_thread_updates.py
+      - name: v0.4 tests
+        run: python3 tests/test_v04.py

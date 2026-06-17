@@ -248,6 +248,61 @@ class SqliteStore:
                 })
         return _activity_result(events, since, limit)
 
+    def _last_touch(self, c, user, message_id, msg_sender, msg_created_at):
+        touch = 0.0
+        if msg_sender == user:
+            touch = max(touch, float(msg_created_at))
+        row = c.execute(
+            "SELECT read_at FROM message_reads WHERE message_id=? AND user=?",
+            (message_id, user)).fetchone()
+        if row:
+            touch = max(touch, float(row["read_at"]))
+        for r in c.execute(
+                "SELECT created_at FROM message_replies WHERE message_id=? AND author=?",
+                (message_id, user)):
+            touch = max(touch, float(r["created_at"]))
+        return touch
+
+    def get_thread_updates(self, user, limit=30):
+        limit = max(1, min(int(limit or 30), 100))
+        updates = []
+        with self._conn() as c:
+            for m in c.execute("SELECT * FROM messages").fetchall():
+                m = dict(m)
+                mid = m["id"]
+                if m["sender"] != user and not self._participates(
+                        c, user, mid, m["sender"]):
+                    continue
+                last_touch = self._last_touch(
+                    c, user, mid, m["sender"], m["created_at"])
+                row = c.execute(
+                    "SELECT * FROM message_replies WHERE message_id=? AND author!=? "
+                    "ORDER BY created_at DESC LIMIT 1", (mid, user)).fetchone()
+                if not row:
+                    continue
+                row = dict(row)
+                if float(row["created_at"]) <= last_touch:
+                    continue
+                unread = c.execute(
+                    "SELECT COUNT(*) FROM message_replies "
+                    "WHERE message_id=? AND author!=? AND created_at>?",
+                    (mid, user, last_touch)).fetchone()[0]
+                updates.append({
+                    "message_id": mid,
+                    "sender": m["sender"],
+                    "kind": m["kind"],
+                    "unread_replies": unread,
+                    "latest_reply": {
+                        "reply_id": row["id"],
+                        "author": row["author"],
+                        "preview": _preview(row["content"]),
+                        "created_at": row["created_at"],
+                    },
+                })
+        updates.sort(key=lambda u: u["latest_reply"]["created_at"], reverse=True)
+        updates = updates[:limit]
+        return {"threads": updates, "count": len(updates)}
+
     def list_teammates(self):
         activity = {}
         with self._conn() as c:
@@ -540,6 +595,69 @@ class PostgresStore:
         finally:
             c.close()
         return _activity_result(events, since, limit)
+
+    def _last_touch(self, cur, user, message_id, msg_sender, msg_created_at):
+        touch = 0.0
+        if msg_sender == user:
+            touch = max(touch, float(msg_created_at))
+        cur.execute(
+            'SELECT read_at FROM message_reads WHERE message_id=%s AND "user"=%s',
+            (message_id, user))
+        rows = cur.fetchall()
+        if rows:
+            touch = max(touch, float(rows[0][0]))
+        cur.execute(
+            "SELECT created_at FROM message_replies WHERE message_id=%s AND author=%s",
+            (message_id, user))
+        for row in cur.fetchall():
+            touch = max(touch, float(row[0]))
+        return touch
+
+    def get_thread_updates(self, user, limit=30):
+        limit = max(1, min(int(limit or 30), 100))
+        updates = []
+        c = self._connect()
+        try:
+            cur = c.cursor()
+            cur.execute("SELECT * FROM messages")
+            for m in self._dicts(cur):
+                mid = m["id"]
+                if m["sender"] != user and not self._participates(
+                        cur, user, mid, m["sender"]):
+                    continue
+                last_touch = self._last_touch(
+                    cur, user, mid, m["sender"], m["created_at"])
+                cur.execute(
+                    "SELECT * FROM message_replies WHERE message_id=%s AND author!=%s "
+                    "ORDER BY created_at DESC LIMIT 1", (mid, user))
+                latest = self._dicts(cur)
+                if not latest:
+                    continue
+                row = latest[0]
+                if float(row["created_at"]) <= last_touch:
+                    continue
+                cur.execute(
+                    "SELECT COUNT(*) FROM message_replies "
+                    "WHERE message_id=%s AND author!=%s AND created_at>%s",
+                    (mid, user, last_touch))
+                unread = int(cur.fetchone()[0])
+                updates.append({
+                    "message_id": mid,
+                    "sender": m["sender"],
+                    "kind": m["kind"],
+                    "unread_replies": unread,
+                    "latest_reply": {
+                        "reply_id": row["id"],
+                        "author": row["author"],
+                        "preview": _preview(row["content"]),
+                        "created_at": row["created_at"],
+                    },
+                })
+        finally:
+            c.close()
+        updates.sort(key=lambda u: u["latest_reply"]["created_at"], reverse=True)
+        updates = updates[:limit]
+        return {"threads": updates, "count": len(updates)}
 
     def list_teammates(self):
         activity = {}

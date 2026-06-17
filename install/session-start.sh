@@ -6,8 +6,9 @@ ENV="$HOME/.pluribusai/env"
 
 auth=()
 [ -n "$PLURIBUSAI_TOKEN" ] && auth=(-H "Authorization: Bearer $PLURIBUSAI_TOKEN")
+[ -n "$PLURIBUSAI_USER" ] && auth=("${auth[@]}" -H "X-PluribusAI-User: $PLURIBUSAI_USER")
 
-inbox_req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"get_inbox\",\"arguments\":{\"user\":\"$PLURIBUSAI_USER\"}}}"
+inbox_req='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_inbox","arguments":{}}}'
 
 count=$(curl -s --max-time 8 -X POST "$PLURIBUSAI_ENDPOINT/mcp" \
   -H 'Content-Type: application/json' "${auth[@]}" -d "$inbox_req" 2>/dev/null \
@@ -20,19 +21,16 @@ fi
 
 echo "PluribusAI inbox for $PLURIBUSAI_USER: $count unread message(s)."
 
-if [ "$count" != "0" ]; then
-  act_req="{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"get_activity\",\"arguments\":{\"user\":\"$PLURIBUSAI_USER\",\"since\":0,\"limit\":5}}}"
-  curl -s --max-time 8 -X POST "$PLURIBUSAI_ENDPOINT/mcp" \
-    -H 'Content-Type: application/json' "${auth[@]}" -d "$act_req" 2>/dev/null \
-    | python3 -c "
+act_req='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_thread_updates","arguments":{"limit":5}}}'
+curl -s --max-time 8 -X POST "$PLURIBUSAI_ENDPOINT/mcp" \
+  -H 'Content-Type: application/json' "${auth[@]}" -d "$act_req" 2>/dev/null \
+  | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-for e in json.loads(d['result']['content'][0]['text'])['events'][-5:]:
-    if e['type'] == 'message':
-        print(f\"  - [new] {e['sender']}: {e['preview']} ({e['message_id']})\")
-    else:
-        print(f\"  - [reply] {e['author']} on {e['message_id']}: {e['preview']}\")
+threads = json.loads(d['result']['content'][0]['text']).get('threads', [])
+for t in threads[-5:]:
+    lr = t.get('latest_reply', {})
+    print(f\"  - [reply] {lr.get('author')} on {t.get('message_id')}: {lr.get('preview', '')}\")
 " 2>/dev/null || true
-fi
 
 echo "Use PluribusAI MCP tools (get_inbox, get_activity, read_message, reply_message) for team collaboration."
