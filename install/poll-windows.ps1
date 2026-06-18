@@ -6,8 +6,8 @@ $cursorF  = Join-Path $dir '.activity-cursor'
 $slfile   = Join-Path $dir 'statusline.txt'
 $clickPy  = Join-Path $dir 'click-handler.py'
 $lockF    = Join-Path $dir '.poll.lock'
+$python   = if ($PLURIBUSAI_PYTHON) { $PLURIBUSAI_PYTHON } else { 'python' }
 
-# Skip if another poller ran in the last 45s (manual + scheduled overlap).
 if (Test-Path $lockF) {
   $age = (Get-Date) - (Get-Item $lockF).LastWriteTime
   if ($age.TotalSeconds -lt 45) { exit 0 }
@@ -18,46 +18,50 @@ $headers = @{ 'Content-Type' = 'application/json' }
 if ($PLURIBUSAI_TOKEN) { $headers['Authorization'] = "Bearer $PLURIBUSAI_TOKEN" }
 if ($PLURIBUSAI_USER)   { $headers['X-PluribusAI-User'] = $PLURIBUSAI_USER }
 
-$global:PluribusClickPy = $clickPy
-$global:PluribusDir = $dir
+function Invoke-ClickHandler($evt) {
+  if (-not $evt -or -not (Test-Path $clickPy)) { return }
+  $py = if (Test-Path $python) { $python } else { 'python' }
+  $payload = @{
+    type = $evt.type
+    message_id = $evt.message_id
+    person = $evt.person
+    preview = $evt.preview
+  } | ConvertTo-Json -Compress
+  $payloadFile = Join-Path $dir 'click-payload.json'
+  [System.IO.File]::WriteAllText($payloadFile, $payload)
+  & $py $clickPy --payload-file $payloadFile
+}
 
 function Show-Toast($text, $evt) {
   try {
     Add-Type -AssemblyName System.Windows.Forms
     $script:toastClicked = $false
+    $script:clickEvt = $null
+    $script:clickDone = $false
     $n = New-Object System.Windows.Forms.NotifyIcon
     $n.Icon = [System.Drawing.SystemIcons]::Information
     $n.Visible = $true
     if ($evt) {
       $n.Tag = $evt
-      $onClick = {
+      $markClick = {
         param($source, $eventArgs)
         if ($script:toastClicked) { return }
         $script:toastClicked = $true
-        $t = $source.Tag
-        if (-not $t) { return }
-        $py = $global:PluribusClickPy
-        $pdir = $global:PluribusDir
-        if (-not (Test-Path $py)) { return }
-        $payload = @{
-          type = $t.type
-          message_id = $t.message_id
-          person = $t.person
-          preview = $t.preview
-        } | ConvertTo-Json -Compress
-        $payloadFile = Join-Path $pdir 'click-payload.json'
-        [System.IO.File]::WriteAllText($payloadFile, $payload)
-        Start-Process -FilePath 'python' -ArgumentList @(
-          $py, '--payload-file', $payloadFile) -WindowStyle Hidden
+        $script:clickEvt = $source.Tag
       }
-      $n.add_BalloonTipClicked($onClick)
-      $n.add_Click($onClick)
+      $n.add_BalloonTipClicked($markClick)
+      $n.add_Click($markClick)
     }
-    $n.ShowBalloonTip(12000, 'PluribusAI', "$text`n(Click balloon or tray icon)", 'Info')
-    $deadline = (Get-Date).AddSeconds(14)
-    while ((Get-Date) -lt $deadline -and -not $script:toastClicked) {
+    $n.ShowBalloonTip(15000, 'PluribusAI', "$text`n(Click balloon or tray icon)", 'Info')
+    $deadline = (Get-Date).AddSeconds(18)
+    while ((Get-Date) -lt $deadline) {
+      if ($script:toastClicked -and -not $script:clickDone) {
+        $script:clickDone = $true
+        Invoke-ClickHandler $script:clickEvt
+        break
+      }
       [System.Windows.Forms.Application]::DoEvents()
-      Start-Sleep -Milliseconds 250
+      Start-Sleep -Milliseconds 200
     }
     $n.Dispose()
   } catch {}
@@ -70,7 +74,6 @@ try {
   $act = Invoke-RestMethod -Uri $actUri -Method Get -Headers $headers -TimeoutSec 65
   $events = @($act.events)
   if ($events.Count -gt 0) {
-    # One toast per poll: summarize batch, click opens the newest event.
     $latest = $events[-1]
     if ($latest.type -eq 'reply') {
       $evt = @{

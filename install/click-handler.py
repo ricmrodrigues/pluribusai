@@ -119,6 +119,39 @@ def focus_agent_app():
         ps_path = os.path.join(pluribusai_dir(), "_focus.ps1")
         ps_body = r"""
 $ErrorActionPreference = 'SilentlyContinue'
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class NativeMethods {
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr p);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+}
+"@
+function Force-Foreground([IntPtr]$hwnd) {
+  if ($hwnd -eq [IntPtr]::Zero) { return $false }
+  $fg = [NativeMethods]::GetForegroundWindow()
+  $fgThread = [NativeMethods]::GetWindowThreadProcessId($fg, [IntPtr]::Zero)
+  $winThread = [NativeMethods]::GetWindowThreadProcessId($hwnd, [IntPtr]::Zero)
+  $myThread = [NativeMethods]::GetCurrentThreadId()
+  if ($fgThread -ne $winThread) {
+    [NativeMethods]::AttachThreadInput($myThread, $fgThread, $true) | Out-Null
+    [NativeMethods]::AttachThreadInput($winThread, $fgThread, $true) | Out-Null
+  }
+  if ([NativeMethods]::IsIconic($hwnd)) {
+    [NativeMethods]::ShowWindowAsync($hwnd, 9) | Out-Null
+  }
+  $ok = [NativeMethods]::SetForegroundWindow($hwnd)
+  if ($fgThread -ne $winThread) {
+    [NativeMethods]::AttachThreadInput($myThread, $fgThread, $false) | Out-Null
+    [NativeMethods]::AttachThreadInput($winThread, $fgThread, $false) | Out-Null
+  }
+  return $ok
+}
 $exes = @(
   (Join-Path $env:LOCALAPPDATA 'Programs\cursor\Cursor.exe'),
   (Join-Path $env:LOCALAPPDATA 'Programs\Grok\Grok.exe')
@@ -126,25 +159,14 @@ $exes = @(
 foreach ($exe in $exes) {
   if ($exe -and (Test-Path $exe)) { Start-Process $exe | Out-Null }
 }
-Start-Sleep -Milliseconds 400
-Add-Type -AssemblyName Microsoft.VisualBasic
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class Win32 {
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-}
-"@
+Start-Sleep -Milliseconds 500
 foreach ($name in @('Cursor', 'Grok')) {
   $p = Get-Process -Name $name -ErrorAction SilentlyContinue |
     Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } |
     Sort-Object { $_.MainWindowTitle.Length } -Descending |
     Select-Object -First 1
   if ($p) {
-    [Win32]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
-    [void][Microsoft.VisualBasic.Interaction]::AppActivate($p.Id)
-    [Win32]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+    [void](Force-Foreground $p.MainWindowHandle)
     Write-Output $name
     exit 0
   }

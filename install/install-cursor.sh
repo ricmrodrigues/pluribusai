@@ -111,10 +111,12 @@ EOF
   launchctl unload "$PLIST" 2>/dev/null || true
   launchctl load "$PLIST"
 else
+  PY_WIN=$(cygpath -w "$(command -v python 2>/dev/null || command -v python3)" | sed 's/\\/\\\\/g')
   cat > "$DIR/env.ps1" <<EOF
 \$PLURIBUSAI_TOKEN    = '$TOKEN'
 \$PLURIBUSAI_ENDPOINT = '$ENDPOINT'
 \$PLURIBUSAI_USER     = '$USER_ID'
+\$PLURIBUSAI_PYTHON   = '$PY_WIN'
 EOF
   cp "$SCRIPT_DIR/poll-windows.ps1" "$DIR/poll.ps1"
   cp "$SCRIPT_DIR/session-start.ps1" "$DIR/session-start.ps1"

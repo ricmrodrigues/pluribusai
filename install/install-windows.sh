@@ -76,10 +76,12 @@ say "Registering PluribusAI with Cursor..."
 CURSOR_CFG=$(python "$SCRIPT_DIR/cursor_util.py" install "$ENDPOINT" "$TOKEN" "$USER_ID")
 say "  cursor -> $CURSOR_CFG"
 
+PY_WIN=$(python -c "import sys; print(sys.executable.replace(chr(92), chr(92)*2))" 2>/dev/null || echo python)
 cat > "$DIR/env.ps1" <<EOF
 \$PLURIBUSAI_TOKEN    = '$TOKEN'
 \$PLURIBUSAI_ENDPOINT = '$ENDPOINT'
 \$PLURIBUSAI_USER     = '$USER_ID'
+\$PLURIBUSAI_PYTHON   = '$PY_WIN'
 EOF
 
 cp "$SCRIPT_DIR/session-start.ps1" "$DIR/session-start.ps1"
