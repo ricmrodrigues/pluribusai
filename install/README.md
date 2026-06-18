@@ -47,7 +47,7 @@ SessionStart hook, and **desktop toasts**:
 | Platform | Mechanism |
 |----------|-----------|
 | macOS | `launchd` + `poll-macos.sh` → `terminal-notifier` (or `osascript` fallback) |
-| Windows | `schtasks` + `poll-windows.ps1` → PowerShell balloon toasts |
+| Windows | Continuous `poll.ps1` daemon + `toast.ps1` → tray balloon (click tray icon) |
 
 **Click a toast (v0.5):** runs `click-handler.py` → writes `~/.pluribusai/focus.json`,
 copies an agent-ready prompt to the clipboard, and focuses Cursor (or Grok). Paste

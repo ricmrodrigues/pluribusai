@@ -87,6 +87,7 @@ EOF
 cp "$SCRIPT_DIR/session-start.ps1" "$DIR/session-start.ps1"
 
 cp "$SCRIPT_DIR/poll-windows.ps1" "$DIR/poll.ps1"
+cp "$SCRIPT_DIR/toast-windows.ps1" "$DIR/toast.ps1"
 cp "$SCRIPT_DIR/click-handler.py" "$DIR/click-handler.py"
 
 cat > "$DIR/poll-hidden.vbs" <<'VBS'
@@ -115,12 +116,11 @@ PY
   python "$SCRIPT_DIR/hooks_util.py" install "$SETTINGS" "$SS_CMD"
 fi
 
-say "Creating scheduled task '$TASK' (desktop notifications)..."
-schtasks //Create //TN "$TASK" //SC MINUTE //MO 1 //F //TR "wscript.exe \"$VBS_WIN\"" >/dev/null
+say "Starting continuous poll daemon (long-poll, near-real-time toasts)..."
+schtasks //Create //TN "$TASK" //SC ONLOGON //F //TR "wscript.exe \"$VBS_WIN\"" >/dev/null
+wscript.exe "$VBS_WIN" >/dev/null 2>&1 &
 
-PS1_WIN=$(cygpath -w "$DIR/poll.ps1")
 echo "0" > "$DIR/.activity-cursor"
-powershell -NoProfile -ExecutionPolicy Bypass -File "$PS1_WIN" >/dev/null 2>&1 || true
 
 echo
 say "Done. Endpoint: $ENDPOINT/mcp"

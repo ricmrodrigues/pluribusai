@@ -119,6 +119,7 @@ else
 \$PLURIBUSAI_PYTHON   = '$PY_WIN'
 EOF
   cp "$SCRIPT_DIR/poll-windows.ps1" "$DIR/poll.ps1"
+  cp "$SCRIPT_DIR/toast-windows.ps1" "$DIR/toast.ps1"
   cp "$SCRIPT_DIR/session-start.ps1" "$DIR/session-start.ps1"
   cp "$SCRIPT_DIR/click-handler.py" "$DIR/click-handler.py"
 
@@ -128,9 +129,11 @@ ps1 = sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\.pluribusai\poll.ps1"
 sh.Run "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & ps1 & """", 0, False
 VBS
   VBS_WIN=$(cygpath -w "$DIR/poll-hidden.vbs")
-  say "Creating scheduled task pluribusai-poll — Windows balloon toasts..."
-  schtasks //Create //TN pluribusai-poll //SC MINUTE //MO 1 //F \
+  schtasks //Delete //TN pluribusai-poll //F 2>/dev/null || true
+  say "Starting continuous poll daemon (long-poll, near-real-time toasts)..."
+  schtasks //Create //TN pluribusai-poll //SC ONLOGON //F \
     //TR "wscript.exe \"$VBS_WIN\"" >/dev/null
+  wscript.exe "$VBS_WIN" >/dev/null 2>&1 &
 fi
 
 say "Installing Grok SessionStart hook..."
@@ -168,7 +171,7 @@ if [ "$PLATFORM" = macos ]; then
     echo "   • macOS toasts: osascript (install terminal-notifier for click-to-open: brew install terminal-notifier)"
   fi
 else
-  echo "   • Windows toasts: click balloon → clipboard prompt + focus Cursor"
+  echo "   • Windows: continuous poll daemon + tray-icon click to open Cursor"
 fi
 echo "   • Restart Cursor and Grok to pick up MCP + hooks"
 echo "   • Uninstall: ./install-cursor.sh --uninstall"
