@@ -91,6 +91,7 @@ EOF
   chmod +x "$DIR/poll.sh"
   cp "$SCRIPT_DIR/session-start.sh" "$DIR/session-start.sh"
   chmod +x "$DIR/session-start.sh"
+  cp "$SCRIPT_DIR/click-handler.py" "$DIR/click-handler.py"
 
   PLIST="$HOME/Library/LaunchAgents/com.pluribusai.poll.plist"
   LABEL="com.pluribusai.poll"
@@ -117,6 +118,7 @@ else
 EOF
   cp "$SCRIPT_DIR/poll-windows.ps1" "$DIR/poll.ps1"
   cp "$SCRIPT_DIR/session-start.ps1" "$DIR/session-start.ps1"
+  cp "$SCRIPT_DIR/click-handler.py" "$DIR/click-handler.py"
 
   cat > "$DIR/poll-hidden.vbs" <<'VBS'
 Set sh = CreateObject("WScript.Shell")
@@ -158,9 +160,13 @@ echo "?" > "$DIR/open-count.txt"
 echo
 say "Installed for $USER_ID at $ENDPOINT/mcp"
 if [ "$PLATFORM" = macos ]; then
-  echo "   • macOS toasts: osascript via launchd poller"
+  if command -v terminal-notifier >/dev/null 2>&1; then
+    echo "   • macOS toasts: terminal-notifier (click → clipboard prompt + focus Cursor)"
+  else
+    echo "   • macOS toasts: osascript (install terminal-notifier for click-to-open: brew install terminal-notifier)"
+  fi
 else
-  echo "   • Windows toasts: PowerShell NotifyIcon via scheduled task (every minute)"
+  echo "   • Windows toasts: click balloon → clipboard prompt + focus Cursor"
 fi
 echo "   • Restart Cursor and Grok to pick up MCP + hooks"
 echo "   • Uninstall: ./install-cursor.sh --uninstall"

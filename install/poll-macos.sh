@@ -1,9 +1,10 @@
 #!/bin/sh
-# Background poller: long-poll /activity + macOS notifications (osascript).
+# Background poller: long-poll /activity + macOS notifications (clickable via terminal-notifier).
 . "$HOME/.pluribusai/env"
 DIR="$HOME/.pluribusai"
 CACHE="$DIR/open-count.txt"
 CURSOR="$DIR/.activity-cursor"
+CLICK="$DIR/click-handler.py"
 USER_HDR=""
 [ -n "$PLURIBUSAI_USER" ] && USER_HDR="-H X-PluribusAI-User: $PLURIBUSAI_USER"
 
@@ -30,24 +31,51 @@ while :; do
   else
     body=$(curl -s --max-time 65 -G "$url")
   fi
-  python3 - "$body" "$CURSOR" <<'PY'
-import json, sys, subprocess
-body, cursor_path = sys.argv[1], sys.argv[2]
+  python3 - "$body" "$CURSOR" "$CLICK" <<'PY'
+import json, shlex, subprocess, sys
+
+body, cursor_path, click_handler = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
     data = json.loads(body or "{}")
 except Exception:
     data = {"events": [], "count": 0, "cursor": 0}
 events = data.get("events") or []
-if events:
-    for e in events:
-        if e.get("type") == "reply":
-            msg = f"{e.get('author')} replied on {e.get('message_id')}"
-        else:
-            msg = f"New message from {e.get('sender')}"
-        subprocess.run(["osascript", "-e",
-            f'display notification "{msg}" with title "PluribusAI" sound name "Glass"'],
+if not events:
+    sys.exit(0)
+
+use_notifier = subprocess.run(
+    ["which", "terminal-notifier"], capture_output=True).returncode == 0
+
+for e in events:
+    etype = e.get("type")
+    mid = e.get("message_id", "")
+    preview = (e.get("preview") or "").replace('"', "'")
+    if etype == "reply":
+        person = e.get("author", "")
+        title = "PluribusAI"
+        msg = f"{person} replied on {mid}"
+        args = ["--type", "reply", "--message-id", mid, "--author", person,
+                "--preview", preview]
+    else:
+        person = e.get("sender", "")
+        title = "PluribusAI"
+        msg = f"New message from {person}"
+        args = ["--type", "message", "--message-id", mid, "--sender", person,
+                "--preview", preview]
+
+    if use_notifier:
+        cmd = " ".join([shlex.quote("python3"), shlex.quote(click_handler)]
+                       + [shlex.quote(a) for a in args])
+        subprocess.run(
+            ["terminal-notifier", "-title", title, "-message", msg,
+             "-sound", "Glass", "-execute", cmd],
             check=False)
-    open(cursor_path, "w").write(str(data.get("cursor", 0)))
+    else:
+        subprocess.run(["osascript", "-e",
+            f'display notification "{msg}" with title "{title}" sound name "Glass"'],
+            check=False)
+
+open(cursor_path, "w").write(str(data.get("cursor", 0)))
 PY
   refresh_inbox
 done

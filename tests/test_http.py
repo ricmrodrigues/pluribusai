@@ -52,7 +52,7 @@ time.sleep(0.2)
 
 try:
     code, body = get("/health")
-    check("health ok", code == 200 and body.get("version") == "0.4.0")
+    check("health ok", code == 200 and body.get("version") == "0.5.0")
 
     try:
         get("/activity?user=bob&since=0&timeout=1")

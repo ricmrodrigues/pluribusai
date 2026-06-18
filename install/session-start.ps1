@@ -24,6 +24,11 @@ try {
 
 Write-Output "PluribusAI inbox for ${PLURIBUSAI_USER}: $count unread message(s)."
 
+$clickPy = Join-Path $dir 'click-handler.py'
+if (Test-Path $clickPy) {
+  & python $clickPy --consume-focus 2>$null
+}
+
 $threadBody = @{
   jsonrpc = '2.0'; id = 2; method = 'tools/call'
   params = @{

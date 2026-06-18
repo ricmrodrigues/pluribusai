@@ -28,3 +28,5 @@ jobs:
         run: python3 tests/test_thread_updates.py
       - name: v0.4 tests
         run: python3 tests/test_v04.py
+      - name: Click handler tests
+        run: python3 tests/test_click_handler.py

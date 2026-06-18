@@ -58,8 +58,8 @@ PLURIBUSAI_USER=<yourname> \
 ```
 
 Sets `X-PluribusAI-User` in `~/.cursor/mcp.json` so agents need not repeat your
-username. Desktop notifications work on **macOS** (osascript) and **Windows**
-(PowerShell toasts). Restart Cursor and Grok after install.
+username. Desktop notifications work on **macOS** and **Windows**; **click a toast**
+to copy an agent prompt and focus Cursor. Restart Cursor and Grok after install.
 
 ---
 

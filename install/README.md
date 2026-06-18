@@ -46,8 +46,15 @@ SessionStart hook, and **desktop toasts**:
 
 | Platform | Mechanism |
 |----------|-----------|
-| macOS | `launchd` + `poll-macos.sh` → `osascript` notifications |
+| macOS | `launchd` + `poll-macos.sh` → `terminal-notifier` (or `osascript` fallback) |
 | Windows | `schtasks` + `poll-windows.ps1` → PowerShell balloon toasts |
+
+**Click a toast (v0.5):** runs `click-handler.py` → writes `~/.pluribusai/focus.json`,
+copies an agent-ready prompt to the clipboard, and focuses Cursor (or Grok). Paste
+in the agent or start a new session to pick up `focus.json` via SessionStart.
+
+macOS clickable toasts need [terminal-notifier](https://github.com/julienXX/terminal-notifier):
+`brew install terminal-notifier`
 
 Also installed automatically by `install.sh` / `install-windows.sh`.
 Restart Cursor and Grok after install.

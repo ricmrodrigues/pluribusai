@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 from store import make_store
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 CURRENT_USER = contextvars.ContextVar("pluribusai_user", default=None)
 

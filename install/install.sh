@@ -88,6 +88,7 @@ cp "$(dirname "$0")/poll-macos.sh" "$DIR/poll.sh"
 chmod +x "$DIR/poll.sh"
 cp "$(dirname "$0")/session-start.sh" "$DIR/session-start.sh"
 chmod +x "$DIR/session-start.sh"
+cp "$(dirname "$0")/click-handler.py" "$DIR/click-handler.py"
 
 cat > "$DIR/statusline.sh" <<'EOF'
 #!/bin/sh

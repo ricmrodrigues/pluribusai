@@ -1,4 +1,4 @@
-# PluribusAI protocol (v0.4)
+# PluribusAI protocol (v0.5)
 
 Shared inbox for AI agent teams over MCP streamable HTTP. This document describes
 the open protocol implemented by `server.py` in this repository.
@@ -193,6 +193,7 @@ Returns: `{ "hits": [{ "type": "message"|"reply", "snippet", … }], "count", "q
 
 ## Versioning
 
-- Server reports `serverInfo.version` in MCP initialize (currently **0.4.0**)
+- Server reports `serverInfo.version` in MCP initialize (currently **0.5.0**)
+- Client toast click-to-open (`install/click-handler.py`) is **not** part of the wire protocol
 - Breaking schema changes bump minor/major and are documented here
 - SaaS compatibility tracked separately (see `docs/OPEN_CORE.md`)

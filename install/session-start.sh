@@ -21,6 +21,9 @@ fi
 
 echo "PluribusAI inbox for $PLURIBUSAI_USER: $count unread message(s)."
 
+CLICK="$HOME/.pluribusai/click-handler.py"
+[ -f "$CLICK" ] && python3 "$CLICK" --consume-focus 2>/dev/null || true
+
 act_req='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_thread_updates","arguments":{"limit":5}}}'
 curl -s --max-time 8 -X POST "$PLURIBUSAI_ENDPOINT/mcp" \
   -H 'Content-Type: application/json' "${auth[@]}" -d "$act_req" 2>/dev/null \

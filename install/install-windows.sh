@@ -85,6 +85,7 @@ EOF
 cp "$SCRIPT_DIR/session-start.ps1" "$DIR/session-start.ps1"
 
 cp "$SCRIPT_DIR/poll-windows.ps1" "$DIR/poll.ps1"
+cp "$SCRIPT_DIR/click-handler.py" "$DIR/click-handler.py"
 
 cat > "$DIR/poll-hidden.vbs" <<'VBS'
 Set sh = CreateObject("WScript.Shell")
