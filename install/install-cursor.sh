@@ -119,11 +119,13 @@ else
 \$PLURIBUSAI_PYTHON   = '$PY_WIN'
 EOF
   cp "$SCRIPT_DIR/poll-windows.ps1" "$DIR/poll.ps1"
-  cp "$SCRIPT_DIR/toast-windows.ps1" "$DIR/toast.ps1"
+  cp "$SCRIPT_DIR/winrt-toast.ps1" "$DIR/winrt-toast.ps1"
+  cp "$SCRIPT_DIR/protocol-open.ps1" "$DIR/protocol-open.ps1"
+  cp "$SCRIPT_DIR/register-windows-toast.ps1" "$DIR/register-windows-toast.ps1"
   cp "$SCRIPT_DIR/session-start.ps1" "$DIR/session-start.ps1"
   cp "$SCRIPT_DIR/click-handler.py" "$DIR/click-handler.py"
-
   cp "$SCRIPT_DIR/poll-hidden.vbs" "$DIR/poll-hidden.vbs"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$DIR/register-windows-toast.ps1" >/dev/null 2>&1 || true
   VBS_WIN=$(cygpath -w "$DIR/poll-hidden.vbs")
   schtasks //Delete //TN pluribusai-poll //F 2>/dev/null || true
   say "Starting continuous poll daemon (login only, no minute spam)..."
@@ -167,7 +169,7 @@ if [ "$PLATFORM" = macos ]; then
     echo "   • macOS toasts: osascript (install terminal-notifier for click-to-open: brew install terminal-notifier)"
   fi
 else
-  echo "   • Windows: continuous poll daemon + tray-icon click to open Cursor"
+  echo "   • Windows: WinRT Action Center toasts (click opens Cursor)"
 fi
 echo "   • Restart Cursor and Grok to pick up MCP + hooks"
 echo "   • Uninstall: ./install-cursor.sh --uninstall"

@@ -1,4 +1,4 @@
-# Continuous long-poll daemon. One instance, cursor-based toast dedupe.
+# Continuous long-poll daemon. WinRT toasts (Action Center), not legacy balloons.
 $ErrorActionPreference = 'SilentlyContinue'
 $dir = Join-Path $env:USERPROFILE '.pluribusai'
 . (Join-Path $dir 'env.ps1')
@@ -6,11 +6,10 @@ $cache      = Join-Path $dir 'open-count.txt'
 $cursorF    = Join-Path $dir '.activity-cursor'
 $toastCurF  = Join-Path $dir '.last-toast-cursor'
 $slfile     = Join-Path $dir 'statusline.txt'
-$toastPs1   = Join-Path $dir 'toast.ps1'
+$winrtPs1   = Join-Path $dir 'winrt-toast.ps1'
 $pidF       = Join-Path $dir 'poll.pid'
 $toastsOn   = -not ($PLURIBUSAI_TOASTS -eq '0')
 
-# Exit if another daemon is already running.
 if (Test-Path $pidF) {
   $oldPid = [int](Get-Content $pidF -ErrorAction SilentlyContinue)
   if ($oldPid -gt 0 -and (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)) { exit 0 }
@@ -33,12 +32,8 @@ function Set-CursorValue($path, $val) {
   [System.IO.File]::WriteAllText($path, "$val")
 }
 
-function Start-ToastAsync($text, $evt) {
-  if (-not $toastsOn -or -not (Test-Path $toastPs1)) { return }
-  $running = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -match 'pluribusai\\toast\.ps1' }).Count
-  if ($running -ge 1) { return }
-
+function Start-WinRTToast($text, $evt) {
+  if (-not $toastsOn -or -not (Test-Path $winrtPs1)) { return }
   $payloadFile = Join-Path $dir ("toast-" + [guid]::NewGuid().ToString() + ".json")
   @{
     text = $text; type = $evt.type; message_id = $evt.message_id
@@ -46,7 +41,7 @@ function Start-ToastAsync($text, $evt) {
   } | ConvertTo-Json -Compress | Set-Content $payloadFile
   Start-Process -FilePath 'powershell' -ArgumentList @(
     '-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-    '-WindowStyle', 'Hidden', '-File', $toastPs1,
+    '-WindowStyle', 'Hidden', '-File', $winrtPs1,
     '-PayloadFile', $payloadFile) -WindowStyle Hidden
 }
 
@@ -100,7 +95,7 @@ while ($true) {
         }
         Set-CursorValue $toastCurF $act.cursor
         $script:lastToastAt = Get-Date
-        Start-ToastAsync $toast $evt
+        Start-WinRTToast $toast $evt
       }
     }
   } catch {}

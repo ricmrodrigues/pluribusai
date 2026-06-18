@@ -87,8 +87,11 @@ EOF
 cp "$SCRIPT_DIR/session-start.ps1" "$DIR/session-start.ps1"
 
 cp "$SCRIPT_DIR/poll-windows.ps1" "$DIR/poll.ps1"
-cp "$SCRIPT_DIR/toast-windows.ps1" "$DIR/toast.ps1"
+cp "$SCRIPT_DIR/winrt-toast.ps1" "$DIR/winrt-toast.ps1"
+cp "$SCRIPT_DIR/protocol-open.ps1" "$DIR/protocol-open.ps1"
+cp "$SCRIPT_DIR/register-windows-toast.ps1" "$DIR/register-windows-toast.ps1"
 cp "$SCRIPT_DIR/click-handler.py" "$DIR/click-handler.py"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$DIR/register-windows-toast.ps1" >/dev/null 2>&1 || true
 
 cp "$SCRIPT_DIR/poll-hidden.vbs" "$DIR/poll-hidden.vbs"
 VBS_WIN=$(cygpath -w "$DIR/poll-hidden.vbs")
