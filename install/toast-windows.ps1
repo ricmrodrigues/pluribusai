@@ -26,28 +26,43 @@ function Invoke-ClickHandler($e) {
 }
 
 Add-Type -AssemblyName System.Windows.Forms
-$clicked = $false
-$clickEvt = $null
-$shownAt = Get-Date
+$script:clicked = $false
+$script:clickEvt = $null
+$script:shownAt = Get-Date
+
+function Register-Click($source) {
+  $onTray = {
+    param($src, $eventArgs)
+    if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+    if ($script:clicked) { return }
+    if (((Get-Date) - $script:shownAt).TotalMilliseconds -lt 400) { return }
+    $script:clicked = $true
+    $script:clickEvt = $src.Tag
+  }
+  $onBalloon = {
+    param($src, $eventArgs)
+    if ($script:clicked) { return }
+    $elapsed = ((Get-Date) - $script:shownAt).TotalSeconds
+    # Ignore auto-dismiss ghost clicks (usually fire near balloon timeout).
+    if ($elapsed -lt 0.4 -or $elapsed -gt 11) { return }
+    $script:clicked = $true
+    $script:clickEvt = $src.Tag
+  }
+  $source.add_MouseClick($onTray)
+  $source.add_BalloonTipClicked($onBalloon)
+}
+
 $n = New-Object System.Windows.Forms.NotifyIcon
 $n.Icon = [System.Drawing.SystemIcons]::Information
-$n.Text = 'PluribusAI - click icon to open'
+$n.Text = 'PluribusAI - click to open in Cursor'
 $n.Visible = $true
 $n.Tag = $evt
-$onTrayClick = {
-  param($source, $eventArgs)
-  if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
-  if ($script:clicked) { return }
-  if (((Get-Date) - $shownAt).TotalMilliseconds -lt 400) { return }
-  $script:clicked = $true
-  $script:clickEvt = $source.Tag
-}
-$n.add_MouseClick($onTrayClick)
-$n.ShowBalloonTip(8000, 'PluribusAI', "$Text`n(Click the blue icon in the tray)", 'Info')
-$deadline = (Get-Date).AddSeconds(20)
+Register-Click $n
+$n.ShowBalloonTip(12000, 'PluribusAI', "$Text`n(Click balloon or tray icon)", 'Info')
+$deadline = (Get-Date).AddSeconds(18)
 while ((Get-Date) -lt $deadline) {
-  if ($clicked) {
-    Invoke-ClickHandler $clickEvt
+  if ($script:clicked) {
+    Invoke-ClickHandler $script:clickEvt
     break
   }
   [System.Windows.Forms.Application]::DoEvents()
