@@ -123,14 +123,10 @@ EOF
   cp "$SCRIPT_DIR/session-start.ps1" "$DIR/session-start.ps1"
   cp "$SCRIPT_DIR/click-handler.py" "$DIR/click-handler.py"
 
-  cat > "$DIR/poll-hidden.vbs" <<'VBS'
-Set sh = CreateObject("WScript.Shell")
-ps1 = sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\.pluribusai\poll.ps1"
-sh.Run "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & ps1 & """", 0, False
-VBS
+  cp "$SCRIPT_DIR/poll-hidden.vbs" "$DIR/poll-hidden.vbs"
   VBS_WIN=$(cygpath -w "$DIR/poll-hidden.vbs")
   schtasks //Delete //TN pluribusai-poll //F 2>/dev/null || true
-  say "Starting continuous poll daemon (long-poll, near-real-time toasts)..."
+  say "Starting continuous poll daemon (login only, no minute spam)..."
   schtasks //Create //TN pluribusai-poll //SC ONLOGON //F \
     //TR "wscript.exe \"$VBS_WIN\"" >/dev/null
   wscript.exe "$VBS_WIN" >/dev/null 2>&1 &

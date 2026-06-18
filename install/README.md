@@ -53,8 +53,11 @@ SessionStart hook, and **desktop toasts**:
 copies an agent-ready prompt to the clipboard, and focuses Cursor (or Grok). Paste
 in the agent or start a new session to pick up `focus.json` via SessionStart.
 
-macOS clickable toasts need [terminal-notifier](https://github.com/julienXX/terminal-notifier):
-`brew install terminal-notifier`
+**Disable toasts** (status line + SessionStart still work): set `PLURIBUSAI_TOASTS=0`
+in `~/.pluribusai/env.ps1` (Windows) or `env` (macOS).
+
+Windows uses legacy tray balloons — they can be flaky. macOS clickable toasts need
+[terminal-notifier](https://github.com/julienXX/terminal-notifier): `brew install terminal-notifier`
 
 Also installed automatically by `install.sh` / `install-windows.sh`.
 Restart Cursor and Grok after install.

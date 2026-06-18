@@ -90,12 +90,9 @@ cp "$SCRIPT_DIR/poll-windows.ps1" "$DIR/poll.ps1"
 cp "$SCRIPT_DIR/toast-windows.ps1" "$DIR/toast.ps1"
 cp "$SCRIPT_DIR/click-handler.py" "$DIR/click-handler.py"
 
-cat > "$DIR/poll-hidden.vbs" <<'VBS'
-Set sh = CreateObject("WScript.Shell")
-ps1 = sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\.pluribusai\poll.ps1"
-sh.Run "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & ps1 & """", 0, False
-VBS
+cp "$SCRIPT_DIR/poll-hidden.vbs" "$DIR/poll-hidden.vbs"
 VBS_WIN=$(cygpath -w "$DIR/poll-hidden.vbs")
+schtasks //Delete //TN "$TASK" //F 2>/dev/null || true
 
 if [ "$HAS_CLAUDE" -eq 1 ]; then
   say "Configuring Claude statusLine + SessionStart hook..."
