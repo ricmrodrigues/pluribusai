@@ -38,22 +38,26 @@ function Show-Toast($text, $evt) {
     $script:toastClicked = $false
     $script:clickEvt = $null
     $script:clickDone = $false
+    $shownAt = Get-Date
     $n = New-Object System.Windows.Forms.NotifyIcon
     $n.Icon = [System.Drawing.SystemIcons]::Information
+    $n.Text = 'PluribusAI - click icon to open'
     $n.Visible = $true
     if ($evt) {
       $n.Tag = $evt
-      $markClick = {
+      # Tray icon click only. BalloonTipClicked fires spuriously on auto-dismiss.
+      $onTrayClick = {
         param($source, $eventArgs)
+        if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
         if ($script:toastClicked) { return }
+        if (((Get-Date) - $shownAt).TotalMilliseconds -lt 400) { return }
         $script:toastClicked = $true
         $script:clickEvt = $source.Tag
       }
-      $n.add_BalloonTipClicked($markClick)
-      $n.add_Click($markClick)
+      $n.add_MouseClick($onTrayClick)
     }
-    $n.ShowBalloonTip(15000, 'PluribusAI', "$text`n(Click balloon or tray icon)", 'Info')
-    $deadline = (Get-Date).AddSeconds(18)
+    $n.ShowBalloonTip(8000, 'PluribusAI', "$text`n(Click the blue icon in the tray)", 'Info')
+    $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {
       if ($script:toastClicked -and -not $script:clickDone) {
         $script:clickDone = $true

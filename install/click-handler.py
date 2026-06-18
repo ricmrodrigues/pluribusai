@@ -152,14 +152,6 @@ function Force-Foreground([IntPtr]$hwnd) {
   }
   return $ok
 }
-$exes = @(
-  (Join-Path $env:LOCALAPPDATA 'Programs\cursor\Cursor.exe'),
-  (Join-Path $env:LOCALAPPDATA 'Programs\Grok\Grok.exe')
-)
-foreach ($exe in $exes) {
-  if ($exe -and (Test-Path $exe)) { Start-Process $exe | Out-Null }
-}
-Start-Sleep -Milliseconds 500
 foreach ($name in @('Cursor', 'Grok')) {
   $p = Get-Process -Name $name -ErrorAction SilentlyContinue |
     Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } |
