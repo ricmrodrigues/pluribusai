@@ -61,6 +61,16 @@ with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f)
 check("stale focus ignored", click_handler.read_focus() is None)
 
+payload_path = os.path.join(_tmp, ".pluribusai", "payload.json")
+os.makedirs(os.path.dirname(payload_path), exist_ok=True)
+with open(payload_path, "w", encoding="utf-8") as f:
+    json.dump({
+        "type": "message", "message_id": "msg_fromfile",
+        "person": "ana", "preview": "via payload file",
+    }, f)
+etype, mid, sender, author, preview = click_handler.load_payload_file(payload_path)
+check("payload file loads", etype == "message" and mid == "msg_fromfile" and sender == "ana")
+
 click_handler.write_focus("reply", "msg_fresh", author="ana", preview="ok")
 import io
 from contextlib import redirect_stdout

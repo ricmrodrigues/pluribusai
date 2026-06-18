@@ -105,9 +105,8 @@ def copy_to_clipboard(text):
 
 
 def focus_agent_app():
-    apps = ["Cursor", "Grok"]
     if sys.platform == "darwin":
-        for app in apps:
+        for app in ("Cursor", "Grok"):
             r = subprocess.run(
                 ["osascript", "-e", f'tell application "{app}" to activate'],
                 capture_output=True,
@@ -117,8 +116,18 @@ def focus_agent_app():
                 return app
         return None
     if sys.platform == "win32":
-        ps = r"""
-$names = @('Cursor', 'Grok')
+        ps_path = os.path.join(pluribusai_dir(), "_focus.ps1")
+        ps_body = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$exes = @(
+  (Join-Path $env:LOCALAPPDATA 'Programs\cursor\Cursor.exe'),
+  (Join-Path $env:LOCALAPPDATA 'Programs\Grok\Grok.exe')
+)
+foreach ($exe in $exes) {
+  if ($exe -and (Test-Path $exe)) { Start-Process $exe | Out-Null }
+}
+Start-Sleep -Milliseconds 400
+Add-Type -AssemblyName Microsoft.VisualBasic
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -127,10 +136,14 @@ public class Win32 {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 }
 "@
-foreach ($name in $names) {
-  $p = Get-Process -Name $name -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+foreach ($name in @('Cursor', 'Grok')) {
+  $p = Get-Process -Name $name -ErrorAction SilentlyContinue |
+    Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } |
+    Sort-Object { $_.MainWindowTitle.Length } -Descending |
+    Select-Object -First 1
   if ($p) {
     [Win32]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
+    [void][Microsoft.VisualBasic.Interaction]::AppActivate($p.Id)
     [Win32]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
     Write-Output $name
     exit 0
@@ -138,15 +151,28 @@ foreach ($name in $names) {
 }
 exit 1
 """
+        os.makedirs(pluribusai_dir(), exist_ok=True)
+        with open(ps_path, "w", encoding="utf-8") as f:
+            f.write(ps_body)
         r = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps],
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps_path],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=15,
         )
         if r.returncode == 0 and r.stdout.strip():
             return r.stdout.strip()
     return None
+
+
+def load_payload_file(path):
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    event_type = data.get("type")
+    message_id = data.get("message_id")
+    if event_type == "reply":
+        return event_type, message_id, None, data.get("person"), data.get("preview")
+    return event_type, message_id, data.get("person"), None, data.get("preview")
 
 
 def handle_click(event_type, message_id, sender=None, author=None, preview=None):
@@ -176,20 +202,29 @@ def main():
     parser.add_argument("--sender")
     parser.add_argument("--author")
     parser.add_argument("--preview", default="")
+    parser.add_argument("--payload-file",
+                        help="JSON payload from toast click (avoids shell quoting issues)")
     args = parser.parse_args()
 
     if args.consume_focus:
         return consume_focus()
 
-    if not args.type or not args.message_id:
-        parser.error("--type and --message-id are required unless using --consume-focus")
+    if args.payload_file:
+        event_type, message_id, sender, author, preview = load_payload_file(
+            args.payload_file)
+    else:
+        event_type, message_id, sender, author, preview = (
+            args.type, args.message_id, args.sender, args.author, args.preview)
+
+    if not event_type or not message_id:
+        parser.error("--type and --message-id are required unless using --payload-file")
 
     handle_click(
-        args.type,
-        args.message_id,
-        sender=args.sender,
-        author=args.author,
-        preview=args.preview,
+        event_type,
+        message_id,
+        sender=sender,
+        author=author,
+        preview=preview,
     )
     return 0
 
