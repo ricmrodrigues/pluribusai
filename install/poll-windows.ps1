@@ -20,11 +20,18 @@ if ($PLURIBUSAI_USER)   { $headers['X-PluribusAI-User'] = $PLURIBUSAI_USER }
 function Start-ToastAsync($text, $evt) {
   if (-not (Test-Path $toastPs1)) { return }
   $payloadFile = Join-Path $dir ("toast-" + [guid]::NewGuid().ToString() + ".json")
-  $evt | ConvertTo-Json -Compress | Set-Content $payloadFile
+  $payload = @{
+    text = $text
+    type = $evt.type
+    message_id = $evt.message_id
+    person = $evt.person
+    preview = $evt.preview
+  }
+  $payload | ConvertTo-Json -Compress | Set-Content $payloadFile
   Start-Process -FilePath 'powershell' -ArgumentList @(
     '-Sta', '-NoProfile', '-ExecutionPolicy', 'Bypass',
     '-WindowStyle', 'Hidden', '-File', $toastPs1,
-    '-Text', $text, '-PayloadFile', $payloadFile) -WindowStyle Hidden
+    '-PayloadFile', $payloadFile) -WindowStyle Hidden
 }
 
 function Refresh-Inbox {

@@ -1,6 +1,5 @@
 # Show one toast (STA). Spawned by poll daemon so long-poll is not blocked.
 param(
-  [Parameter(Mandatory)][string]$Text,
   [Parameter(Mandatory)][string]$PayloadFile
 )
 $ErrorActionPreference = 'SilentlyContinue'
@@ -8,7 +7,9 @@ $dir = Join-Path $env:USERPROFILE '.pluribusai'
 . (Join-Path $dir 'env.ps1')
 $clickPy = Join-Path $dir 'click-handler.py'
 $python  = if ($PLURIBUSAI_PYTHON) { $PLURIBUSAI_PYTHON } else { 'python' }
-$evt = Get-Content $PayloadFile -Raw | ConvertFrom-Json
+$data = Get-Content $PayloadFile -Raw | ConvertFrom-Json
+$Text = $data.text
+$evt = $data
 
 function Invoke-ClickHandler($e) {
   if (-not $e -or -not (Test-Path $clickPy)) { return }
