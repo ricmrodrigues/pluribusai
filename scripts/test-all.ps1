@@ -122,8 +122,13 @@ try {
 # 8. LAN reachability hint
 if (-not $LanIp) {
   $LanIp = (Get-NetIPAddress -AddressFamily IPv4 |
-    Where-Object { $_.IPAddress -like "192.168.*" } |
+    Where-Object { $_.IPAddress -like "192.168.1.*" } |
     Select-Object -First 1).IPAddress
+  if (-not $LanIp) {
+    $LanIp = (Get-NetIPAddress -AddressFamily IPv4 |
+      Where-Object { $_.IPAddress -like "192.168.*" } |
+      Select-Object -First 1).IPAddress
+  }
 }
 if ($LanIp) {
   try {
@@ -145,8 +150,8 @@ if (Test-Path $mcpPath) {
 
 # 10. Poll daemon
 if (Test-Path "$HOME\.pluribusai\poll.pid") {
-  $pid = Get-Content "$HOME\.pluribusai\poll.pid"
-  $alive = Get-Process -Id $pid -ErrorAction SilentlyContinue
+  $pollPid = Get-Content "$HOME\.pluribusai\poll.pid"
+  $alive = Get-Process -Id $pollPid -ErrorAction SilentlyContinue
   Check "poll daemon running" ($null -ne $alive)
 } else {
   Check "poll daemon running" $false

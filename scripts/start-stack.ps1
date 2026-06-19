@@ -24,13 +24,21 @@ if (-not $cpUp) {
   $env:CONTROL_PLANE_URL = "http://localhost:8080"
   $env:DATA_PLANE_URL = "http://localhost:30787"
   $env:PLURIBUSAI_INTERNAL_SECRET = $JwtSecret
+  $runner = Join-Path $Cloud "scripts\run-server.ps1"
   Start-Process -WindowStyle Hidden -FilePath "powershell.exe" -ArgumentList @(
-    "-NoProfile", "-Command",
-    "cd '$Cloud'; `$env:PYTHONPATH='.'; `$env:CONTROL_PLANE_SECRET='$JwtSecret'; " +
-    "`$env:DATA_PLANE_URL='http://localhost:30787'; `$env:PLURIBUSAI_INTERNAL_SECRET='$JwtSecret'; " +
-    "uvicorn control_plane.app:app --host 127.0.0.1 --port 8080"
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runner,
+    "-JwtSecret", $JwtSecret
   )
-  Start-Sleep 3
+  Start-Sleep 5
+  $ok = $false
+  foreach ($i in 1..6) {
+    try {
+      $r = Invoke-RestMethod -Uri "http://127.0.0.1:8080/health" -TimeoutSec 2
+      if ($r.status -eq "ok") { $ok = $true; break }
+    } catch {}
+    Start-Sleep 2
+  }
+  if (-not $ok) { Write-Warning "Control plane did not become healthy on :8080" }
 }
 
 # K8s data plane
@@ -38,7 +46,7 @@ try {
   $dp = Invoke-RestMethod -Uri "http://localhost:30787/health" -TimeoutSec 3
   Say "Data plane: v$($dp.version) auth=$($dp.auth) jwt=$($dp.jwt)"
 } catch {
-  Write-Warning "Data plane not reachable on :30787 — run helm install or wire-cloud.ps1"
+  Write-Warning "Data plane not reachable on :30787 - run helm install or wire-cloud.ps1"
 }
 
 if (-not $SkipK8sWire) {
