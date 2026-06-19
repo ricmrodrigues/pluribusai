@@ -1,59 +1,47 @@
-# Expose PluribusAI on the LAN via Kubernetes NodePort (Docker Desktop).
-# Usage: .\scripts\expose-lan.ps1 [-User ana]
+# Expose PluribusAI on LAN via NodePort + optional Windows firewall rule.
 param(
-  [string]$User = "ana",
-  [int]$NodePort = 30787
+  [string]$Namespace = "pluribusai",
+  [int]$NodePort = 30787,
+  [switch]$AddFirewallRule,
+  [switch]$SkipHelm
 )
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path $PSScriptRoot -Parent
 $Chart = Join-Path $Root "deploy\helm\pluribusai"
 
-function Say($m) { Write-Host "==> $m" -ForegroundColor Cyan }
-
-Say "Upgrading pluribusai service to NodePort $NodePort..."
-helm upgrade pluribusai $Chart -n pluribusai --reuse-values `
-  --set service.type=NodePort `
-  --set service.nodePort=$NodePort `
-  --wait --timeout 3m
+function Say($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 
 $ip = (Get-NetIPAddress -AddressFamily IPv4 |
-  Where-Object {
-    $_.IPAddress -match '^(192\.168\.|10\.)' -and
-    $_.InterfaceAlias -notmatch 'VPN|Nord|Proton|WSL|Hyper-V|Loopback'
-  } |
-  Sort-Object @{ Expression = { $_.IPAddress -like '192.168.*' }; Descending = $true } |
-  Select-Object -First 1 -ExpandProperty IPAddress)
-if (-not $ip) {
-  $ip = (Get-NetIPAddress -AddressFamily IPv4 |
-    Where-Object { $_.IPAddress -like '192.168.*' } |
-    Select-Object -First 1 -ExpandProperty IPAddress)
+  Where-Object { $_.IPAddress -notlike "127.*" -and $_.PrefixOrigin -ne "WellKnown" } |
+  Select-Object -First 1).IPAddress
+if (-not $ip) { $ip = "127.0.0.1" }
+
+if (-not $SkipHelm) {
+  Say "Patching service to NodePort $NodePort..."
+  helm upgrade pluribusai $Chart -n $Namespace `
+    --reuse-values `
+    --set service.type=NodePort `
+    --set service.nodePort=$NodePort `
+    --wait --timeout 3m
 }
 
-if (-not $ip) { $ip = "<your-lan-ip>" }
+Say "LAN endpoint: http://${ip}:${NodePort}"
+Say "MCP:          http://${ip}:${NodePort}/mcp"
+Say "Health:       http://${ip}:${NodePort}/health"
 
-$token = kubectl get secret pluribusai -n pluribusai `
-  -o jsonpath="{.data.PLURIBUSAI_TOKEN}" 2>$null
-if ($token) {
-  $token = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($token))
-} else {
-  $token = "<token-from-kubectl-get-secret>"
+if ($AddFirewallRule) {
+  $rule = "PluribusAI NodePort $NodePort"
+  if (-not (Get-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue)) {
+    Say "Adding firewall rule (admin)..."
+    netsh advfirewall firewall add rule name="$rule" dir=in action=allow protocol=TCP localport=$NodePort | Out-Null
+  } else {
+    Say "Firewall rule already exists."
+  }
 }
 
-$endpoint = "http://${ip}:${NodePort}"
-
-Say "LAN endpoint: $endpoint"
-Say "Bearer token:   $token"
 Write-Host ""
-Write-Host "On ${User}'s machine (Git Bash or WSL):" -ForegroundColor Yellow
-Write-Host @"
-  PLURIBUSAI_ENDPOINT=$endpoint \
-  PLURIBUSAI_TOKEN=$token \
-  PLURIBUSAI_USER=$User \
-  ./install-cursor.sh
-"@
-
-Say "Test from this machine:"
-Write-Host "  curl http://localhost:${NodePort}/health"
-Write-Host ""
-Say "If ${User} cannot connect, allow inbound TCP $NodePort in Windows Firewall."
+Write-Host "Teammate install:" -ForegroundColor Yellow
+Write-Host "  PLURIBUSAI_ENDPOINT=http://${ip}:${NodePort}"
+Write-Host "  PLURIBUSAI_TOKEN=<api-key-or-jwt>"
+Write-Host "  PLURIBUSAI_USER=<username>"

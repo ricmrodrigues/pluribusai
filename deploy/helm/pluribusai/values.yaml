@@ -48,6 +48,12 @@ auth:
   token: ""
   apiKeys: {}
   existingSecret: ""
+  # Control-plane JWT (commercial stack) — same secret as CONTROL_PLANE_SECRET
+  jwtSecret: ""
+  jwtIssuer: pluribusai-control
+  # Data plane validates pk_* keys via control plane (Docker Desktop: host.docker.internal)
+  controlPlaneUrl: ""
+  internalSecret: ""
 
 service:
   type: ClusterIP

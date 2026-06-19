@@ -78,6 +78,26 @@ spec:
                 secretKeyRef:
                   name: {{ include "pluribusai.secretName" . }}
                   key: PLURIBUSAI_TOKEN
+            {{- if .Values.auth.jwtSecret }}
+            - name: PLURIBUSAI_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pluribusai.secretName" . }}
+                  key: PLURIBUSAI_JWT_SECRET
+            - name: PLURIBUSAI_JWT_ISSUER
+              value: {{ .Values.auth.jwtIssuer | quote }}
+            {{- end }}
+            {{- if .Values.auth.controlPlaneUrl }}
+            - name: PLURIBUSAI_CONTROL_PLANE_URL
+              value: {{ .Values.auth.controlPlaneUrl | quote }}
+            {{- end }}
+            {{- if and .Values.auth.controlPlaneUrl .Values.auth.internalSecret }}
+            - name: PLURIBUSAI_INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pluribusai.secretName" . }}
+                  key: PLURIBUSAI_INTERNAL_SECRET
+            {{- end }}
             {{- if .Values.auth.apiKeys }}
             - name: PLURIBUSAI_API_KEYS_FILE
               value: /run/secrets/api-keys.json
