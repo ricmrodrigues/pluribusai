@@ -100,6 +100,33 @@ helm upgrade --install pluribusai deploy/helm/pluribusai \
 
 **Windows helper:** `.\scripts\helm-install.ps1` (builds image + installs when kubectl context exists).
 
+**LAN teammates (NodePort):**
+
+```powershell
+.\scripts\expose-lan.ps1 -AddFirewallRule
+# Teammates use http://<your-lan-ip>:30787
+```
+
+## Control plane + JWT (private `pluribusai-cloud` repo)
+
+Wire the OSS data plane to accept JWTs from the commercial control plane:
+
+```powershell
+.\scripts\wire-cloud.ps1 -JwtSecret "your-control-plane-secret"
+.\scripts\start-stack.ps1          # control plane + client
+.\scripts\test-all.ps1             # full smoke suite
+```
+
+| Script | Purpose |
+|--------|---------|
+| `wire-cloud.ps1` | Helm upgrade with `auth.jwtSecret` + control-plane URL |
+| `wire-client.ps1` | Pull JWT into `~/.pluribusai/env.ps1` |
+| `wire-cursor-mcp.ps1` | Sync `~/.cursor/mcp.json` |
+| `gen-teammate-token.ps1` | Admin issues JWT for ana/bob |
+| `install-teammate.ps1` | One-shot Windows install for LAN teammates |
+| `start-stack.ps1` | Start everything |
+| `test-all.ps1` | End-to-end verification |
+
 Plain manifests (no Helm): see `deploy/k8s/`. Create secrets manually:
 
 ```sh
