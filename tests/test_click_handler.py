@@ -29,6 +29,23 @@ def check(name, cond):
         fail.append(name)
 
 
+check("default focus apps", click_handler.parse_focus_apps() == ["Cursor", "Grok"])
+check("none disables focus", click_handler.parse_focus_apps("none") == [])
+check("alias map", click_handler.parse_focus_apps("cursor,claude") == [
+    "Cursor", "Claude"])
+check("single attribution",
+      click_handler.focus_attribution_text() == "Click to open in Cursor, Grok")
+os.environ["PLURIBUSAI_FOCUS_APP"] = "claude"
+check("env override", click_handler.parse_focus_apps() == ["Claude"])
+check("claude attribution",
+      click_handler.focus_attribution_text() ==
+      "Click to open in Claude")
+os.environ["PLURIBUSAI_FOCUS_APP"] = "none"
+check("none attribution",
+      click_handler.focus_attribution_text() ==
+      "Click to copy prompt — paste in your agent")
+os.environ.pop("PLURIBUSAI_FOCUS_APP", None)
+
 click_handler.clear_focus()
 
 msg_prompt = click_handler.build_prompt(

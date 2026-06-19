@@ -58,6 +58,8 @@ else
   PY=python3
 fi
 
+FOCUS_APP="${PLURIBUSAI_FOCUS_APP:-cursor,grok}"
+
 TOKEN="${PLURIBUSAI_TOKEN:-}"
 if [ -z "$TOKEN" ]; then
   printf "Enter PluribusAI bearer token (empty if auth disabled): "
@@ -85,6 +87,7 @@ if [ "$PLATFORM" = macos ]; then
 PLURIBUSAI_TOKEN="$TOKEN"
 PLURIBUSAI_ENDPOINT="$ENDPOINT"
 PLURIBUSAI_USER="$USER_ID"
+PLURIBUSAI_FOCUS_APP="$FOCUS_APP"
 EOF
   chmod 600 "$DIR/env"
   cp "$SCRIPT_DIR/poll-macos.sh" "$DIR/poll.sh"
@@ -117,6 +120,7 @@ else
 \$PLURIBUSAI_ENDPOINT = '$ENDPOINT'
 \$PLURIBUSAI_USER     = '$USER_ID'
 \$PLURIBUSAI_PYTHON   = '$PY_WIN'
+\$PLURIBUSAI_FOCUS_APP = '$FOCUS_APP'
 EOF
   cp "$SCRIPT_DIR/poll-windows.ps1" "$DIR/poll.ps1"
   cp "$SCRIPT_DIR/winrt-toast.ps1" "$DIR/winrt-toast.ps1"
@@ -164,12 +168,12 @@ echo
 say "Installed for $USER_ID at $ENDPOINT/mcp"
 if [ "$PLATFORM" = macos ]; then
   if command -v terminal-notifier >/dev/null 2>&1; then
-    echo "   • macOS toasts: terminal-notifier (click → clipboard prompt + focus Cursor)"
+    echo "   • macOS toasts: terminal-notifier (click → clipboard + focus: $FOCUS_APP)"
   else
     echo "   • macOS toasts: osascript (install terminal-notifier for click-to-open: brew install terminal-notifier)"
   fi
 else
-  echo "   • Windows: WinRT Action Center toasts (click opens Cursor)"
+  echo "   • Windows: WinRT Action Center toasts (click focus: $FOCUS_APP)"
 fi
 echo "   • Restart Cursor and Grok to pick up MCP + hooks"
 echo "   • Uninstall: ./install-cursor.sh --uninstall"

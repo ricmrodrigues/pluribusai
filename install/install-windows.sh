@@ -49,6 +49,15 @@ command -v python >/dev/null 2>&1 || die "python not found (needed for Cursor MC
 HAS_CLAUDE=0
 command -v claude >/dev/null 2>&1 && HAS_CLAUDE=1
 
+FOCUS_APP="${PLURIBUSAI_FOCUS_APP:-}"
+if [ -z "$FOCUS_APP" ]; then
+  if [ "$HAS_CLAUDE" -eq 1 ]; then
+    FOCUS_APP="cursor,claude"
+  else
+    FOCUS_APP="cursor"
+  fi
+fi
+
 TOKEN="${PLURIBUSAI_TOKEN:-}"
 if [ -z "$TOKEN" ]; then printf "Enter PluribusAI token (empty if none): "; read -r TOKEN; fi
 USER_ID="${PLURIBUSAI_USER:-}"
@@ -82,6 +91,7 @@ cat > "$DIR/env.ps1" <<EOF
 \$PLURIBUSAI_ENDPOINT = '$ENDPOINT'
 \$PLURIBUSAI_USER     = '$USER_ID'
 \$PLURIBUSAI_PYTHON   = '$PY_WIN'
+\$PLURIBUSAI_FOCUS_APP = '$FOCUS_APP'
 EOF
 
 cp "$SCRIPT_DIR/session-start.ps1" "$DIR/session-start.ps1"
@@ -127,4 +137,5 @@ say "Done. Endpoint: $ENDPOINT/mcp"
 if [ "$HAS_CLAUDE" -eq 1 ]; then
   echo "   • Restart Claude Code for MCP + status line"
 fi
+echo "   • Toast click focus: $FOCUS_APP (override in ~/.pluribusai/env.ps1)"
 echo "   • Restart Cursor (or reload MCP) for ~/.cursor/mcp.json"

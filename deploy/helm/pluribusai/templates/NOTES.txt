@@ -1,0 +1,39 @@
+PluribusAI is installed!
+
+  Release:   {{ .Release.Name }}
+  Namespace: {{ .Release.Namespace }}
+  Store:     {{ .Values.store.type }}
+  Version:   {{ .Chart.AppVersion }}
+
+1. Get the bearer token:
+
+  kubectl get secret {{ include "pluribusai.secretName" . }} -n {{ .Release.Namespace }} \
+    -o jsonpath="{.data.PLURIBUSAI_TOKEN}" | base64 -d ; echo
+
+2. Reach the server (pick one):
+
+{{- if .Values.ingress.enabled }}
+  Ingress: https://{{ (index .Values.ingress.hosts 0).host }}
+{{- else if eq .Values.service.type "LoadBalancer" }}
+  kubectl get svc {{ include "pluribusai.fullname" . }} -n {{ .Release.Namespace }}
+{{- else if eq .Values.service.type "NodePort" }}
+  curl http://localhost:{{ .Values.service.nodePort }}/health
+  # LAN teammates: http://<your-lan-ip>:{{ .Values.service.nodePort }}
+{{- else }}
+  kubectl port-forward svc/{{ include "pluribusai.fullname" . }} 8787:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+  curl http://localhost:8787/health
+{{- end }}
+
+3. Configure clients (per user):
+
+  PLURIBUSAI_ENDPOINT=http://localhost:8787 \
+  PLURIBUSAI_TOKEN=<token-from-step-1> \
+  PLURIBUSAI_USER=alice \
+  ./install-cursor.sh
+
+{{- if .Values.auth.apiKeys }}
+
+Per-user keys are in secret {{ include "pluribusai.secretName" . }} (api-keys.json).
+{{- end }}
+
+Docs: https://github.com/ricmrodrigues/pluribusai/blob/main/docs/DEPLOY.md

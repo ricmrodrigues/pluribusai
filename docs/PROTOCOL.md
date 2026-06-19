@@ -1,4 +1,4 @@
-# PluribusAI protocol (v0.5)
+# PluribusAI protocol (v0.6)
 
 Shared inbox for AI agent teams over MCP streamable HTTP. This document describes
 the open protocol implemented by `server.py` in this repository.
@@ -10,16 +10,25 @@ the open protocol implemented by `server.py` in this repository.
 | `/mcp` | `POST` | JSON-RPC 2.0 MCP (tools/list, tools/call, initialize) |
 | `/health` | `GET` | Liveness + server version |
 | `/activity` | `GET` | Activity feed with optional long-poll |
+| `/metrics` | `GET` | Prometheus text metrics (v0.6) |
 
 ### Authentication
 
-When `PLURIBUSAI_TOKEN` is set on the server, clients must send:
+When auth is enabled, clients must send:
 
 ```
 Authorization: Bearer <token>
 ```
 
-When unset, auth is disabled (local dev only).
+Two modes (can coexist):
+
+1. **Shared team token** — `PLURIBUSAI_TOKEN` on the server. Clients identify
+   themselves with `X-PluribusAI-User`.
+2. **Per-user API keys** (v0.6) — `PLURIBUSAI_API_KEYS_FILE` maps usernames to
+   bearer tokens. The server sets the user from the key; `X-PluribusAI-User` must
+   match if present.
+
+When all auth env vars are unset, auth is disabled (local dev only).
 
 ### User identity header (v0.4)
 

@@ -50,8 +50,14 @@ SessionStart hook, and **desktop toasts**:
 | Windows | Continuous `poll.ps1` daemon + **WinRT** Action Center toasts (`winrt-toast.ps1`) |
 
 **Click a toast (v0.5):** runs `click-handler.py` → writes `~/.pluribusai/focus.json`,
-copies an agent-ready prompt to the clipboard, and focuses Cursor (or Grok). Paste
-in the agent or start a new session to pick up `focus.json` via SessionStart.
+copies an agent-ready prompt to the clipboard, and focuses the first running app from
+`PLURIBUSAI_FOCUS_APP`. Paste in the agent or start a new session to pick up
+`focus.json` via SessionStart.
+
+**Focus target** (`~/.pluribusai/env.ps1` or `env`): comma-separated aliases —
+`cursor`, `grok`, `claude` (Desktop). Examples: `cursor,grok` (install-cursor),
+`cursor,claude` (install / install-windows with Claude), `claude` only, or `none`
+(clipboard + `focus.json` only — right for Claude Code CLI).
 
 **Disable toasts** (status line + SessionStart still work): set `PLURIBUSAI_TOASTS=0`
 in `~/.pluribusai/env.ps1` (Windows) or `env` (macOS).

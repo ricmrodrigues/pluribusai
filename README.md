@@ -107,10 +107,15 @@ python3 tests/test_lifecycle.py
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PLURIBUSAI_TOKEN` | *(unset)* | Bearer token; unset = auth disabled |
+| `PLURIBUSAI_TOKEN` | *(unset)* | Shared bearer token; unset = auth disabled |
+| `PLURIBUSAI_API_KEYS_FILE` | *(unset)* | Per-user keys JSON (`{"alice":"pk_..."}`) |
 | `PLURIBUSAI_HTTP_PORT` | `8787` | HTTP port |
 | `PLURIBUSAI_STORE` | `sqlite` | `sqlite` or `postgres` |
 | `PLURIBUSAI_DB` | `~/.pluribusai/data/queue.db` | SQLite path |
+| `PLURIBUSAI_LOG_FORMAT` | `json` | `json` or `text` structured logs |
+
+**Production deploy:** Postgres compose, Helm chart, and Kubernetes manifests —
+see [docs/DEPLOY.md](docs/DEPLOY.md). Endpoints: `/health`, `/metrics` (Prometheus).
 
 ---
 
@@ -119,7 +124,10 @@ python3 tests/test_lifecycle.py
 | Path | What |
 |------|------|
 | `server.py`, `store.py` | MCP server + storage backends |
-| `docker-compose.yml` | One-command self-host |
+| `docker-compose.yml` | One-command self-host (SQLite) |
+| `docker-compose.postgres.yml` | Postgres + server |
+| `deploy/helm/pluribusai` | `helm install pluribusai` — SQLite or Postgres |
+| `docs/DEPLOY.md` | Production deployment guide |
 | `install/` | Client setup, activity poller, SessionStart hook |
 | `website/` | Marketing site (GitHub Pages) |
 | `docs/` | Protocol, brand, open-core boundary |

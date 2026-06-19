@@ -1,0 +1,48 @@
+# Production-style self-host: Postgres + PluribusAI server.
+# Usage:  cp .env.example .env && docker compose -f docker-compose.postgres.yml up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pluribusai
+      POSTGRES_USER: pluribusai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-postgres}
+    volumes:
+      - pluribusai-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pluribusai -d pluribusai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  pluribusai:
+    build: .
+    ports:
+      - "${PLURIBUSAI_HTTP_PORT:-8787}:8787"
+    environment:
+      PLURIBUSAI_STORE: postgres
+      PLURIBUSAI_HTTP_PORT: "8787"
+      PLURIBUSAI_TOKEN: ${PLURIBUSAI_TOKEN:-}
+      PLURIBUSAI_API_KEYS_FILE: /run/secrets/api-keys.json
+      PLURIBUSAI_LOG_FORMAT: json
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: pluribusai
+      PGUSER: pluribusai
+      PGPASSWORD: ${POSTGRES_PASSWORD:-change-me-postgres}
+    volumes:
+      - ./deploy/examples/api-keys.json:/run/secrets/api-keys.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8787/health', timeout=3)"]
+      interval: 30s
+      timeout: 4s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  pluribusai-pg:

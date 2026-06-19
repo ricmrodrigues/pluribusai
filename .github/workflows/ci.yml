@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile
-        run: python3 -m py_compile server.py store.py
+        run: python3 -m py_compile server.py store.py auth.py activity_hub.py observability.py migrations.py
       - name: Lifecycle tests
         run: python3 tests/test_lifecycle.py
       - name: Activity tests
@@ -30,3 +30,16 @@ jobs:
         run: python3 tests/test_v04.py
       - name: Click handler tests
         run: python3 tests/test_click_handler.py
+      - name: Auth tests
+        run: python3 tests/test_auth.py
+      - name: JWT auth tests
+        run: pip install PyJWT && python3 tests/test_jwt_auth.py
+      - name: v0.6 ops tests
+        run: python3 tests/test_v06.py
+      - name: Helm chart lint
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          helm lint deploy/helm/pluribusai
+          helm template pluribusai deploy/helm/pluribusai --set auth.token=ci-token | grep -q 'kind: Deployment'
+          helm template pluribusai deploy/helm/pluribusai --set auth.token=ci-token | grep -qv pluribusai-postgresql
+          helm template pluribusai deploy/helm/pluribusai --set store.type=postgres --set auth.token=ci-token | grep -q pluribusai-postgresql

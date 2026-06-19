@@ -45,6 +45,15 @@ if not events:
 
 use_notifier = subprocess.run(
     ["which", "terminal-notifier"], capture_output=True).returncode == 0
+attrib = ""
+try:
+    r = subprocess.run(
+        ["python3", click_handler, "--focus-attribution"],
+        capture_output=True, text=True, timeout=5)
+    if r.returncode == 0:
+        attrib = (r.stdout or "").strip()
+except Exception:
+    pass
 
 for e in events:
     etype = e.get("type")
@@ -66,10 +75,12 @@ for e in events:
     if use_notifier:
         cmd = " ".join([shlex.quote("python3"), shlex.quote(click_handler)]
                        + [shlex.quote(a) for a in args])
-        subprocess.run(
-            ["terminal-notifier", "-title", title, "-message", msg,
-             "-sound", "Glass", "-execute", cmd],
-            check=False)
+        tn = ["terminal-notifier"]
+        if attrib:
+            tn.extend(["-subtitle", attrib])
+        tn.extend(["-title", title, "-message", msg,
+                   "-sound", "Glass", "-execute", cmd])
+        subprocess.run(tn, check=False)
     else:
         subprocess.run(["osascript", "-e",
             f'display notification "{msg}" with title "{title}" sound name "Glass"'],

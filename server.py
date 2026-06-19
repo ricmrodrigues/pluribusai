@@ -4,9 +4,7 @@ PluribusAI: a near-dependency-free MCP server — shared inbox for AI agent team
 
 Transport: MCP streamable HTTP (JSON-RPC 2.0 over HTTP POST at /mcp).
 Storage:   pluggable (SQLite local / Postgres) via store.py.
-Auth:      optional bearer token via PLURIBUSAI_TOKEN.
-
-Local dev is pure stdlib (SQLite). Postgres mode needs pg8000 (+ boto3 for IAM).
+Auth:      optional shared bearer token and/or per-user API keys.
 """
 
 import contextvars
@@ -16,17 +14,23 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from store import make_store
+from activity_hub import ActivityHub
+from auth import load_auth_config
+from observability import Metrics, log_event
+from store import make_store, set_activity_notifier
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 
 CURRENT_USER = contextvars.ContextVar("pluribusai_user", default=None)
 
-TOKEN = os.environ.get("PLURIBUSAI_TOKEN")
 PORT = int(os.environ.get("PLURIBUSAI_HTTP_PORT", "8787"))
 PROTOCOL_VERSION = "2025-06-18"
 
+AUTH = load_auth_config()
+METRICS = Metrics()
+HUB = ActivityHub()
 STORE = make_store()
+set_activity_notifier(HUB.notify)
 
 
 # --------------------------------------------------------------------------- #
@@ -279,17 +283,19 @@ def _parse_activity_query(path):
         limit = int((qs.get("limit") or ["50"])[0])
     except (TypeError, ValueError):
         limit = 50
-    return user, since, max(1, min(timeout, 60)), max(1, min(limit, 100))
+    return user, since, max(0, min(timeout, 60)), max(1, min(limit, 100))
 
 
 def _wait_activity(user, since, timeout, limit):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        result = STORE.get_activity(user, since=since, limit=limit)
-        if result["count"] > 0:
-            return result
-        time.sleep(1)
-    return STORE.get_activity(user, since=since, limit=limit)
+    METRICS.inc_activity_wait()
+    gen_before = HUB.generation
+    result = HUB.wait_for_activity(
+        lambda: STORE.get_activity(user, since=since, limit=limit),
+        timeout=timeout,
+    )
+    if HUB.generation != gen_before:
+        METRICS.inc_activity_wakeup()
+    return result
 
 
 def handle_rpc(msg):
@@ -338,20 +344,22 @@ def handle_rpc(msg):
 
 
 class Handler(BaseHTTPRequestHandler):
+    server_version = f"pluribusai/{VERSION}"
+
     def log_message(self, *a):
         pass
 
-    def _apply_user_header(self):
-        u = self.headers.get("X-PluribusAI-User")
-        if u and u.strip():
-            CURRENT_USER.set(u.strip())
+    def _route_path(self):
+        return self.path.split("?", 1)[0]
 
-    def _auth_ok(self):
-        if not TOKEN:
-            return True
-        return self.headers.get("Authorization") == f"Bearer {TOKEN}"
+    def _authenticate(self):
+        header_user = self.headers.get("X-PluribusAI-User")
+        ok, user = AUTH.resolve(self.headers.get("Authorization"), header_user)
+        if ok and user:
+            CURRENT_USER.set(user)
+        return ok, user
 
-    def _send(self, code, body):
+    def _send_json(self, code, body):
         data = json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -359,51 +367,127 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_text(self, code, body, content_type):
+        data = body.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _finish(self, method, path, status, started, user=None, extra=None):
+        duration_ms = round((time.time() - started) * 1000, 2)
+        METRICS.inc_request(method, path, status)
+        fields = {
+            "method": method,
+            "path": path,
+            "status": status,
+            "duration_ms": duration_ms,
+            "user": user,
+        }
+        if extra:
+            fields.update(extra)
+        level = "warning" if status >= 400 else "info"
+        log_event(level, "http_request", **fields)
+
     def do_GET(self):
-        self._apply_user_header()
-        path = self.path.split("?", 1)[0]
-        if path == "/health":
-            self._send(200, {"status": "ok", "version": VERSION})
-            return
-        if path == "/activity":
-            if not self._auth_ok():
-                self._send(401, {"error": "unauthorized"})
+        started = time.time()
+        path = self._route_path()
+        user = None
+        try:
+            if path == "/health":
+                self._send_json(200, {
+                    "status": "ok",
+                    "version": VERSION,
+                    "auth": "on" if AUTH.enabled else "off",
+                    "jwt": "on" if AUTH.jwt_secret else "off",
+                    "store": os.environ.get("PLURIBUSAI_STORE", "sqlite"),
+                })
+                self._finish("GET", path, 200, started)
                 return
-            user, since, timeout, limit = _parse_activity_query(self.path)
-            if not user:
-                user = CURRENT_USER.get()
-            if not user:
-                self._send(400, {"error": "query param 'user' or X-PluribusAI-User required"})
+
+            if path == "/metrics":
+                self._send_text(200, METRICS.render_prometheus(VERSION),
+                                "text/plain; version=0.0.4; charset=utf-8")
+                self._finish("GET", path, 200, started)
                 return
-            self._send(200, _wait_activity(user, since, timeout, limit))
-            return
-        self._send(404, {"error": "not found"})
+
+            if path == "/activity":
+                ok, user = self._authenticate()
+                if not ok:
+                    self._send_json(401, {"error": "unauthorized"})
+                    self._finish("GET", path, 401, started, user=user)
+                    return
+                q_user, since, timeout, limit = _parse_activity_query(self.path)
+                if not q_user:
+                    q_user = CURRENT_USER.get()
+                if not q_user:
+                    self._send_json(400, {
+                        "error": "query param 'user' or X-PluribusAI-User required"})
+                    self._finish("GET", path, 400, started, user=user)
+                    return
+                user = q_user
+                CURRENT_USER.set(user)
+                body = _wait_activity(user, since, timeout, limit)
+                self._send_json(200, body)
+                self._finish("GET", path, 200, started, user=user,
+                              extra={"events": body.get("count", 0),
+                                     "timeout": timeout})
+                return
+
+            self._send_json(404, {"error": "not found"})
+            self._finish("GET", path, 404, started)
+        except Exception as e:
+            log_event("error", "handler_error", method="GET", path=path,
+                      error=str(e), user=user)
+            raise
 
     def do_POST(self):
-        self._apply_user_header()
-        if self.path.rstrip("/") != "/mcp":
-            self._send(404, {"error": "not found"})
-            return
-        if not self._auth_ok():
-            self._send(401, {"error": "unauthorized"})
-            return
-        length = int(self.headers.get("Content-Length", 0))
+        started = time.time()
+        path = self._route_path()
+        user = None
         try:
-            msg = json.loads(self.rfile.read(length) or "{}")
-        except json.JSONDecodeError:
-            self._send(400, {"jsonrpc": "2.0", "id": None,
-                             "error": {"code": -32700, "message": "parse error"}})
-            return
-        resp = handle_rpc(msg)
-        if resp is None:
-            self.send_response(202)
-            self.end_headers()
-            return
-        self._send(200, resp)
+            if path.rstrip("/") != "/mcp":
+                self._send_json(404, {"error": "not found"})
+                self._finish("POST", path, 404, started)
+                return
+
+            ok, user = self._authenticate()
+            if not ok:
+                self._send_json(401, {"error": "unauthorized"})
+                self._finish("POST", path, 401, started, user=user)
+                return
+
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                msg = json.loads(self.rfile.read(length) or "{}")
+            except json.JSONDecodeError:
+                self._send_json(400, {"jsonrpc": "2.0", "id": None,
+                                      "error": {"code": -32700,
+                                                "message": "parse error"}})
+                self._finish("POST", path, 400, started, user=user)
+                return
+
+            resp = handle_rpc(msg)
+            if resp is None:
+                self.send_response(202)
+                self.end_headers()
+                self._finish("POST", path, 202, started, user=user)
+                return
+            self._send_json(200, resp)
+            self._finish("POST", path, 200, started, user=user)
+        except Exception as e:
+            log_event("error", "handler_error", method="POST", path=path,
+                      error=str(e), user=user)
+            raise
 
 
 if __name__ == "__main__":
     backend = os.environ.get("PLURIBUSAI_STORE", "sqlite")
-    print(f"pluribusai v{VERSION} on :{PORT}  store={backend}  "
-          f"auth={'on' if TOKEN else 'OFF'}")
+    auth_mode = "off"
+    if AUTH.enabled:
+        auth_mode = "shared+keys" if AUTH.shared_token and AUTH.user_keys else (
+            "keys" if AUTH.user_keys else "shared")
+    log_event("info", "server_start", version=VERSION, port=PORT,
+              store=backend, auth=auth_mode)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

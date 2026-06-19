@@ -22,6 +22,23 @@ import sqlite3
 import time
 import uuid
 
+from migrations import ensure_postgres, ensure_sqlite
+
+_activity_notifier = None
+
+
+def set_activity_notifier(fn):
+    global _activity_notifier
+    _activity_notifier = fn
+
+
+def _notify_activity():
+    if _activity_notifier:
+        try:
+            _activity_notifier()
+        except Exception:
+            pass
+
 
 def _now():
     return time.time()
@@ -116,6 +133,7 @@ class SqliteStore:
 
     def _init(self):
         with self._conn() as c:
+            ensure_sqlite(c)
             c.execute("""CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY, sender TEXT NOT NULL, audience TEXT NOT NULL,
                 kind TEXT NOT NULL, content TEXT, ref TEXT,
@@ -134,6 +152,7 @@ class SqliteStore:
                       "created_at) VALUES (?,?,?,?,?,?,?)",
                       (mid, sender, _audience_to_str(audience), kind, content, ref,
                        _now()))
+        _notify_activity()
         return {"message_id": mid, "audience": _audience_from_str(_audience_to_str(audience))}
 
     def get_inbox(self, user):
@@ -171,6 +190,7 @@ class SqliteStore:
             # a reply implies the author has seen the message
             c.execute("INSERT OR IGNORE INTO message_reads (message_id,user,read_at) "
                       "VALUES (?,?,?)", (message_id, author, _now()))
+        _notify_activity()
         return {"reply_id": pid, "message_id": message_id}
 
     def get_message(self, message_id):
@@ -421,6 +441,7 @@ class PostgresStore:
         c = self._connect()
         try:
             cur = c.cursor()
+            ensure_postgres(cur)
             cur.execute("""CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY, sender TEXT NOT NULL, audience TEXT NOT NULL,
                 kind TEXT NOT NULL, content TEXT, ref TEXT,
@@ -453,6 +474,7 @@ class PostgresStore:
             c.commit()
         finally:
             c.close()
+        _notify_activity()
         return {"message_id": mid, "audience": _audience_from_str(_audience_to_str(audience))}
 
     def get_inbox(self, user):
@@ -506,6 +528,7 @@ class PostgresStore:
             c.commit()
         finally:
             c.close()
+        _notify_activity()
         return {"reply_id": pid, "message_id": message_id}
 
     def get_message(self, message_id):

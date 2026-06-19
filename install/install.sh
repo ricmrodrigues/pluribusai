@@ -45,6 +45,8 @@ command -v claude  >/dev/null 2>&1 || die "Claude Code CLI 'claude' not found in
 command -v python3 >/dev/null 2>&1 || die "python3 not found."
 command -v curl    >/dev/null 2>&1 || die "curl not found."
 
+FOCUS_APP="${PLURIBUSAI_FOCUS_APP:-cursor,claude}"
+
 TOKEN="${PLURIBUSAI_TOKEN:-}"
 if [ -z "$TOKEN" ]; then
   printf "Enter PluribusAI bearer token (empty if auth disabled): "
@@ -81,6 +83,7 @@ PLURIBUSAI_TOKEN="$TOKEN"
 PLURIBUSAI_ENDPOINT="$ENDPOINT"
 PLURIBUSAI_USER="$USER_ID"
 PLURIBUSAI_REFRESH="$REFRESH_SECS"
+PLURIBUSAI_FOCUS_APP="$FOCUS_APP"
 EOF
 chmod 600 "$DIR/env"
 
@@ -148,5 +151,6 @@ if [ -n "$c" ]; then
 else
   printf '\033[33m==>\033[0m Installed; endpoint not reachable yet (status line shows stale).\n'
 fi
+echo "   • Toast click focus: $FOCUS_APP (set PLURIBUSAI_FOCUS_APP=none for CLI-only)"
 echo "   • Restart Claude and/or Cursor to pick up the MCP server"
 echo "   • Uninstall: ./install.sh --uninstall"

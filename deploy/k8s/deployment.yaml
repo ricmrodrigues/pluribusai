@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pluribusai
+  labels:
+    app: pluribusai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pluribusai
+  template:
+    metadata:
+      labels:
+        app: pluribusai
+    spec:
+      containers:
+        - name: pluribusai
+          image: pluribusai:0.6.0
+          ports:
+            - containerPort: 8787
+          envFrom:
+            - secretRef:
+                name: pluribusai-env
+          env:
+            - name: PLURIBUSAI_HTTP_PORT
+              value: "8787"
+            - name: PLURIBUSAI_STORE
+              value: postgres
+            - name: PLURIBUSAI_LOG_FORMAT
+              value: json
+            - name: PLURIBUSAI_API_KEYS_FILE
+              value: /run/secrets/api-keys.json
+          volumeMounts:
+            - name: api-keys
+              mountPath: /run/secrets
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8787
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8787
+            initialDelaySeconds: 3
+            periodSeconds: 10
+      volumes:
+        - name: api-keys
+          secret:
+            secretName: pluribusai-api-keys

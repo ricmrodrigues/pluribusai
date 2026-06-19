@@ -8,13 +8,13 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then \
       pip install --no-cache-dir \
         --index-url "$PIP_INDEX_URL" \
         --trusted-host "${PIP_TRUSTED_HOST:-pypi.org}" \
-        "pg8000>=1.30" "boto3>=1.34"; \
+        "pg8000>=1.30" "boto3>=1.34" "PyJWT>=2.9.0"; \
     else \
-      pip install --no-cache-dir "pg8000>=1.30" "boto3>=1.34"; \
+      pip install --no-cache-dir "pg8000>=1.30" "boto3>=1.34" "PyJWT>=2.9.0"; \
     fi
 
 WORKDIR /app
-COPY server.py store.py /app/
+COPY server.py store.py auth.py activity_hub.py observability.py migrations.py /app/
 
 ENV PLURIBUSAI_STORE=sqlite \
     PLURIBUSAI_HTTP_PORT=8787 \

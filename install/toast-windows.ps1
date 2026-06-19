@@ -54,7 +54,12 @@ function Register-Click($source) {
 
 $n = New-Object System.Windows.Forms.NotifyIcon
 $n.Icon = [System.Drawing.SystemIcons]::Information
-$n.Text = 'PluribusAI - click to open in Cursor'
+$attrib = 'Click to open agent app'
+if (Test-Path $clickPy) {
+  $line = & $python $clickPy --focus-attribution 2>$null
+  if ($line) { $attrib = $line.Trim() }
+}
+$n.Text = "PluribusAI - $attrib"
 $n.Visible = $true
 $n.Tag = $evt
 Register-Click $n
